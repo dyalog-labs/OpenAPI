@@ -1,52 +1,89 @@
+using System.Text.Json.Nodes;
 using CaseConverter;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
+using OpenAPIDyalog.Constants;
 using OpenAPIDyalog.Models;
+using OpenAPIDyalog.Services.Interfaces;
 using OpenAPIDyalog.Utils;
 
 namespace OpenAPIDyalog.Services;
 
 /// <summary>
-/// Generates APL model class files from OpenAPI schemas.
+/// Generates APL model class files from OpenAPI component and inline schemas.
 /// </summary>
-/// <remarks>
-/// STATUS: Not yet implemented. Both public methods are intentional no-ops.
-/// The private helpers below are reference implementations preserved for future use.
-/// </remarks>
 public class ModelGeneratorService
 {
+    private readonly ITemplateService _templateService;
     private readonly ILogger<ModelGeneratorService> _logger;
 
-    public ModelGeneratorService(ILogger<ModelGeneratorService> logger)
+    public ModelGeneratorService(ITemplateService templateService, ILogger<ModelGeneratorService> logger)
     {
-        _logger = logger;
+        _templateService = templateService;
+        _logger          = logger;
     }
 
     /// <summary>
-    /// Generates model files from OpenAPI component schemas.
-    /// STATUS: Not yet implemented — intentional no-op.
+    /// Generates model files for all schemas defined in document.Components.Schemas.
     /// </summary>
-    public Task GenerateComponentModelsAsync(OpenApiDocument document, string outputDirectory)
+    public async Task GenerateComponentModelsAsync(OpenApiDocument document, string outputDirectory)
     {
-        var count = document.Components?.Schemas?.Count ?? 0;
-        _logger.LogDebug("Component model generation skipped (not yet implemented). {Count} schema(s) available.", count);
-        return Task.CompletedTask;
+        var schemas = document.Components?.Schemas;
+        if (schemas == null || schemas.Count == 0)
+        {
+            _logger.LogDebug("No component schemas found.");
+            return;
+        }
+
+        _logger.LogInformation("Generating {Count} component model(s)...", schemas.Count);
+
+        foreach (var (name, schema) in schemas)
+        {
+            var context = CreateModelContext(name, schema, document);
+            await GenerateModelAsync(context, outputDirectory);
+        }
     }
 
     /// <summary>
-    /// Generates model files from inline request body schemas discovered during endpoint generation.
-    /// STATUS: Not yet implemented — intentional no-op.
+    /// Generates model files for inline schemas discovered during endpoint generation.
     /// </summary>
-    public Task GenerateInlineSchemaModelsAsync(
+    public async Task GenerateInlineSchemaModelsAsync(
         IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, string outputDirectory)
     {
-        _logger.LogDebug("Inline schema model generation skipped (not yet implemented). {Count} schema(s) available.", inlineSchemas.Count);
-        return Task.CompletedTask;
+        if (inlineSchemas.Count == 0) return;
+
+        _logger.LogInformation("Generating {Count} inline schema model(s)...", inlineSchemas.Count);
+
+        foreach (var (name, schema) in inlineSchemas)
+        {
+            // Inline schemas have no document context for $ref resolution, so pass null.
+            var context = CreateModelContext(name, schema, document: null);
+            await GenerateModelAsync(context, outputDirectory);
+        }
     }
 
-    // ── Reference implementation (no callers yet) ────────────────────────────
+    // ── Core helpers ────────────────────────────────────────────────────────────
 
-    private static ModelTemplateContext CreateModelContext(string schemaName, IOpenApiSchema schema, string? sourceInfo = null)
+    private async Task GenerateModelAsync(ModelTemplateContext context, string outputDirectory)
+    {
+        var template = await _templateService.LoadTemplateAsync(GeneratorConstants.ModelTemplate);
+        var rendered = await _templateService.RenderAsync(template, context);
+
+        var outputPath = Path.Combine(
+            outputDirectory,
+            GeneratorConstants.AplSourceDir,
+            GeneratorConstants.ModelsSubDir,
+            $"{context.ClassName}.aplc");
+
+        await _templateService.SaveOutputAsync(rendered, outputPath);
+        _logger.LogDebug("Generated model: {ClassName}", context.ClassName);
+    }
+
+    private static ModelTemplateContext CreateModelContext(
+        string schemaName,
+        IOpenApiSchema schema,
+        OpenApiDocument? document,
+        string? sourceInfo = null)
     {
         var context = new ModelTemplateContext
         {
@@ -54,46 +91,147 @@ public class ModelGeneratorService
             Description = schema.Description ?? sourceInfo
         };
 
-        if (schema.Properties == null) return context;
-
-        foreach (var property in schema.Properties)
+        // Map type: no named properties, but has additionalProperties.
+        if ((schema.Properties == null || schema.Properties.Count == 0)
+            && schema.AdditionalProperties != null)
         {
-            var propName   = StringHelpers.ToValidAplName(property.Key);
-            var propSchema = property.Value;
+            context.IsMapType    = true;
+            context.MapValueType = SchemaTypeMapper.MapSchemaTypeToAplType(schema.AdditionalProperties);
+            return context;
+        }
 
-            var modelProp = new ModelProperty
-            {
-                ApiName    = propName,
-                DyalogName = propName.ToCamelCase(),
-                Type       = SchemaTypeMapper.MapSchemaTypeToAplType(propSchema),
-                IsRequired = schema.Required?.Contains(propName) ?? false,
-                Description = propSchema.Description,
-                IsArray    = propSchema.Type == JsonSchemaType.Array
-            };
+        // Collect properties from the schema itself.
+        if (schema.Properties != null)
+        {
+            foreach (var kvp in schema.Properties)
+                AddProperty(context, kvp.Key, kvp.Value, schema);
+        }
 
-            if (propSchema is OpenApiSchemaReference schemaRef)
+        // Flatten allOf sub-schemas (inheritance / extension pattern).
+        if (schema.AllOf != null)
+        {
+            foreach (var allOfEntry in schema.AllOf)
             {
-                var id = schemaRef.Reference.Id;
-                if (!string.IsNullOrEmpty(id))
+                var subSchema = ResolveSchema(allOfEntry, document);
+                if (subSchema?.Properties == null) continue;
+
+                foreach (var kvp in subSchema.Properties)
                 {
-                    modelProp.IsReference  = true;
-                    modelProp.ReferenceType = id.ToCamelCase();
+                    // Dedup: skip if already added from the primary schema.
+                    if (context.Properties.Any(p => p.ApiName == kvp.Key)) continue;
+                    AddProperty(context, kvp.Key, kvp.Value, subSchema);
                 }
             }
-            else if (propSchema.Type == JsonSchemaType.Array &&
-                     propSchema.Items is OpenApiSchemaReference itemsRef)
-            {
-                var id = itemsRef.Reference.Id;
-                if (!string.IsNullOrEmpty(id))
-                {
-                    modelProp.IsReference  = true;
-                    modelProp.ReferenceType = id.ToCamelCase();
-                }
-            }
-
-            context.Properties.Add(modelProp);
         }
 
         return context;
+    }
+
+    private static void AddProperty(
+        ModelTemplateContext context,
+        string rawKey,
+        IOpenApiSchema propSchema,
+        IOpenApiSchema parentSchema)
+    {
+        var dyalogName = StringHelpers.ToValidAplName(rawKey);
+
+        var prop = new ModelProperty
+        {
+            ApiName    = rawKey,
+            DyalogName = dyalogName,
+            Type       = SchemaTypeMapper.MapSchemaTypeToAplType(propSchema),
+            IsRequired = parentSchema.Required?.Contains(rawKey) ?? false,
+            IsNullable = SchemaTypeMapper.IsNullable(propSchema),
+            IsReadOnly = propSchema.ReadOnly,
+            IsWriteOnly = propSchema.WriteOnly,
+            Format     = propSchema.Format,
+            Description = propSchema.Description,
+            IsArray    = propSchema.Type == JsonSchemaType.Array
+        };
+
+        // Default value — render as string for the comment.
+        if (propSchema.Default is JsonNode defaultNode)
+            prop.DefaultValue = RenderDefaultValue(defaultNode);
+
+        // Enum values.
+        if (propSchema.Enum?.Count > 0)
+        {
+            prop.EnumValues = propSchema.Enum
+                .Select(e => ExtractEnumString(e))
+                .Where(v => v != null)
+                .Select(v => new EnumValue
+                {
+                    ApiValue = v!,
+                    AplName  = StringHelpers.ToValidAplName(v!.ToPascalCase())
+                })
+                .ToList();
+        }
+
+        // Reference detection — direct $ref property.
+        if (propSchema is OpenApiSchemaReference schemaRef)
+        {
+            var id = schemaRef.Reference.Id;
+            if (!string.IsNullOrEmpty(id))
+            {
+                prop.IsReference  = true;
+                prop.ReferenceType = StringHelpers.ToValidAplName(id.ToPascalCase());
+                // Override the type to show the class name instead of "namespace".
+                prop.Type = StringHelpers.ToValidAplName(id.ToCamelCase());
+            }
+        }
+        // Reference detection — array whose items are a $ref.
+        else if (propSchema.Type == JsonSchemaType.Array
+                 && propSchema.Items is OpenApiSchemaReference itemsRef)
+        {
+            var id = itemsRef.Reference.Id;
+            if (!string.IsNullOrEmpty(id))
+            {
+                prop.IsReference  = true;
+                prop.ReferenceType = StringHelpers.ToValidAplName(id.ToPascalCase());
+                prop.Type = $"array[{StringHelpers.ToValidAplName(id.ToCamelCase())}]";
+            }
+        }
+
+        context.Properties.Add(prop);
+    }
+
+    /// <summary>
+    /// Resolves an allOf entry to a concrete schema, following $ref if present.
+    /// </summary>
+    private static IOpenApiSchema? ResolveSchema(IOpenApiSchema schema, OpenApiDocument? document)
+    {
+        if (schema is OpenApiSchemaReference r
+            && r.Reference.Id != null
+            && document?.Components?.Schemas != null)
+        {
+            document.Components.Schemas.TryGetValue(r.Reference.Id, out var resolved);
+            return resolved;
+        }
+        return schema;
+    }
+
+    /// <summary>
+    /// Renders a JsonNode default value to a human-readable string for comments.
+    /// </summary>
+    private static string? RenderDefaultValue(JsonNode node)
+    {
+        // JsonNode.ToString() on a string value includes surrounding quotes — strip them.
+        if (node is JsonValue jv)
+        {
+            if (jv.TryGetValue<string>(out var s)) return s;
+            return jv.ToString();
+        }
+        return node.ToString();
+    }
+
+    /// <summary>
+    /// Extracts the string representation of an enum value JsonNode.
+    /// </summary>
+    private static string? ExtractEnumString(JsonNode? node)
+    {
+        if (node is null) return null;
+        if (node is JsonValue jv && jv.TryGetValue<string>(out var s)) return s;
+        // Non-string enums (integer, boolean) — render as-is.
+        return node.ToString();
     }
 }

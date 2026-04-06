@@ -67,7 +67,7 @@ public static class GeneratorApplication
         var openApiService  = new OpenApiService(loggerFactory.CreateLogger<OpenApiService>());
         var artifactService = new ArtifactGeneratorService(templateService, loggerFactory.CreateLogger<ArtifactGeneratorService>());
         var endpointService = new EndpointGeneratorService(templateService, loggerFactory.CreateLogger<EndpointGeneratorService>());
-        var modelService    = new ModelGeneratorService(loggerFactory.CreateLogger<ModelGeneratorService>());
+        var modelService    = new ModelGeneratorService(templateService, loggerFactory.CreateLogger<ModelGeneratorService>());
         var codeGen         = new CodeGeneratorService(artifactService, endpointService, modelService,
                                   loggerFactory.CreateLogger<CodeGeneratorService>());
 

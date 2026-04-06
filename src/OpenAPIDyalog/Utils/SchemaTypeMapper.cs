@@ -26,7 +26,11 @@ public static class SchemaTypeMapper
             return "any";
         }
 
-        return schema.Type switch
+        // Strip Null from the flags before switching — nullable types (e.g. string|null)
+        // should map to the base type, not fall through to "any".
+        var effectiveType = schema.Type & ~JsonSchemaType.Null;
+
+        return effectiveType switch
         {
             JsonSchemaType.String  => "str",
             JsonSchemaType.Integer => "int",
@@ -39,4 +43,11 @@ public static class SchemaTypeMapper
             _                      => "any"
         };
     }
+
+    /// <summary>
+    /// Returns true if the schema permits null values
+    /// (i.e. its type flags include <see cref="JsonSchemaType.Null"/>).
+    /// </summary>
+    public static bool IsNullable(IOpenApiSchema schema) =>
+        schema.Type != null && (schema.Type & JsonSchemaType.Null) != 0;
 }

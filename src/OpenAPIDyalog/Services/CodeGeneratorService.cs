@@ -43,8 +43,9 @@ public class CodeGeneratorService : ICodeGeneratorService
 
         await _artifacts.GenerateClientAsync(document, options.OutputDirectory, options.Namespace);
         await _artifacts.GenerateReadmeAsync(document, options.OutputDirectory);
+        //await _artifacts.GenerateTagDocsAsync(document, options.OutputDirectory);
 
-        // Model generation is not yet implemented; the following calls are no-ops:
+        // Model generation
         await _models.GenerateInlineSchemaModelsAsync(inlineSchemas, options.OutputDirectory);
         await _models.GenerateComponentModelsAsync(document, options.OutputDirectory);
     }

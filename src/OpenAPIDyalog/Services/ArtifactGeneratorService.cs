@@ -163,4 +163,31 @@ public class ArtifactGeneratorService
             throw;
         }
     }
+
+    /// <summary>
+    /// Generates a per-tag documentation file at docs/&lt;tag&gt;.md for each tag in the API.
+    /// </summary>
+    public async Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory)
+    {
+        var template = await _templateService.LoadTemplateAsync(GeneratorConstants.TagDocTemplate);
+        var context  = new ApiTemplateContext { Document = document, GeneratedAt = DateTime.UtcNow };
+        context.CustomProperties["class_name"] = GeneratorConstants.DefaultClientClass;
+
+        foreach (var tag in context.GetAllTags())
+        {
+            context.CustomProperties["current_tag"]         = tag;
+            context.CustomProperties["current_tag_display"] = ToDisplayName(tag);
+
+            var output = await _templateService.RenderAsync(template, context);
+            var slug   = tag.Replace(" ", "-");
+            var path   = Path.Combine(outputDirectory, "docs", $"{slug}.md");
+
+            await _templateService.SaveOutputAsync(output, path);
+            _logger.LogInformation("Generated: docs/{Tag}.md", slug);
+        }
+    }
+
+    private static string ToDisplayName(string tag) =>
+        string.Join(" ", tag.Split(['-', '_'])
+            .Select(w => w.Length > 0 ? char.ToUpper(w[0]) + w[1..] : w));
 }

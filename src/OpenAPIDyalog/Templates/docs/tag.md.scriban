@@ -1,0 +1,168 @@
+# {{ current_tag_display }}
+
+← [Back to README](../README.md)
+
+{{~ tag_ops = get_operations_by_tag[current_tag] ~}}
+
+## Operations
+
+{{~ for op in tag_ops ~}}
+- [`{{ op.method }} {{ op.path }}`](#{{ op.operation_id | string.downcase | string.replace " " "-" }}){{~ if op.summary }} — {{ op.summary }}{{~ end ~}}
+
+{{~ end ~}}
+
+---
+
+{{~ for op in tag_ops }}
+## `{{ op.method }} {{ op.path }}`
+
+**Operation ID:** `{{ op.operation_id }}`
+
+{{~ if op.summary ~}}
+{{ op.summary }}
+{{~ end ~}}
+{{~ if op.description && op.description != op.summary ~}}
+
+{{ op.description }}
+{{~ end ~}}
+
+**Usage:**
+```apl
+{{~ has_params = op.path_parameters.size > 0 || op.query_parameters.size > 0 || op.other_parameters.size > 0 || op.has_request_body ~}}
+{{~ if has_params ~}}
+args ← (
+{{~ for param in op.path_parameters ~}}
+    {{ param.apl_name }}: {{ param.example_value }}  ⍝ {{ param.type }}{{~ if param.description }} — {{ param.description }}{{~ end }}
+{{~ end ~}}
+{{~ for param in op.query_parameters ~}}
+{{~ if param.required ~}}
+    {{ param.apl_name }}: {{ param.example_value }}  ⍝ {{ param.type }}{{~ if param.description }} — {{ param.description }}{{~ end }}
+{{~ else ~}}
+    ⍝ {{ param.apl_name }}: {{ param.example_value }}  ⍝ {{ param.type }}{{~ if param.description }} — {{ param.description }}{{~ end }} (optional)
+{{~ end ~}}
+{{~ end ~}}
+{{~ for param in op.other_parameters ~}}
+{{~ if param.required ~}}
+    {{ param.apl_name }}: {{ param.example_value }}  ⍝ {{ param.type }}{{~ if param.description }} — {{ param.description }}{{~ end }}
+{{~ else ~}}
+    ⍝ {{ param.apl_name }}: {{ param.example_value }}  ⍝ {{ param.type }}{{~ if param.description }} — {{ param.description }}{{~ end }} (optional)
+{{~ end ~}}
+{{~ end ~}}
+{{~ if op.has_request_body ~}}
+{{~ if op.request_content_type == "application/json" ~}}
+{{~ # Recursive field renderer.
+    # pad      = leading whitespace for each line at this nesting level.
+    # For optional model/array fields the pad already contains "⍝ " prefixes
+    # inherited from outer optional contexts, so every inner line is automatically
+    # commented without any extra branching. ~}}
+{{~ func render_fields(fields, pad)
+    result = ""
+    for field in fields
+        # Build annotation: type [+ enum values] [+ description] [+ default]
+        ann = field.type
+        if field.enum_values && field.enum_values.size > 0
+            ann = ann + " Enum[" + (field.enum_values | array.join ", ") + "]"
+        end
+        if field.description
+            ann = ann + " — " + field.description
+        end
+        if field.default_value
+            ann = ann + " (default: " + field.default_value + ")"
+        end
+        # Snapshot ann before recursing so a recursive call cannot clobber it.
+        field_ann = ann
+
+        if field.is_read_only
+            result = result + pad + "⍝ " + field.name + ": ...  ⍝ " + field.type + " (readOnly — set by server)\n"
+
+        else if field.is_model_ref || field.is_array_of_models
+            # Required fields use plain indentation; optional fields embed "⍝ " so
+            # every generated line (including recursive children) is commented out.
+            line_pad  = field.is_required ? pad : (pad + "⍝ ")
+            inner_pad = field.is_required ? (pad + "    ") : (pad + "⍝     ")
+            suffix    = "  ⍝ " + field_ann + (field.is_required ? "" : " (optional)")
+
+            if field.is_model_ref
+                open  = field.name + ": ⎕NEW models." + field.model_ref_name + " ("
+                close = ")"
+            else
+                open  = field.name + ": (⎕NEW models." + field.array_item_model_name + " ("
+                close = "))"
+            end
+
+            if field.nested_fields && field.nested_fields.size > 0
+                nested = render_fields field.nested_fields inner_pad
+                result = result + line_pad + open + "\n" + nested + line_pad + close + suffix + "\n"
+            else
+                # Nested schema could not be resolved — emit a compact placeholder.
+                result = result + line_pad + open + "...)" + suffix + "\n"
+            end
+
+        else if field.is_required
+            result = result + pad + field.name + ": " + field.example_value + "  ⍝ " + ann + "\n"
+        else
+            result = result + pad + "⍝ " + field.name + ": " + field.example_value + "  ⍝ " + ann + " (optional)\n"
+        end
+    end
+    ret result
+end ~}}
+{{~ if op.request_body_model_name ~}}
+    ⍝ Request body ({{ op.request_body_model_name }}):
+    {{ op.request_body_param_name }}: ⎕NEW models.{{ op.request_body_model_name }} (
+{{~ if op.request_body_fields && op.request_body_fields.size > 0 ~}}
+{{ render_fields op.request_body_fields "        " -}}
+{{~ else ~}}
+        ⍝ (no schema details available — see endpoint source)
+{{~ end ~}}
+    )
+{{~ else ~}}
+    ⍝ Request body:
+    body: (
+{{~ if op.request_body_fields && op.request_body_fields.size > 0 ~}}
+{{ render_fields op.request_body_fields "        " -}}
+{{~ else ~}}
+        ⍝ (no schema details available — see endpoint source)
+{{~ end ~}}
+    )
+{{~ end ~}}
+{{~ else if op.request_content_type == "multipart/form-data" ~}}
+{{~ for field in op.form_fields ~}}
+{{~ form_ann = field.type ~}}
+{{~ if field.description ~}}{{~ form_ann = form_ann + " — " + field.description ~}}{{~ end ~}}
+{{~ form_val = field.is_binary ? "'@/path/to/file'" : "'value'" ~}}
+{{~ if field.is_binary ~}}{{~ form_ann = form_ann + " (see: Multipart form fields)" ~}}{{~ end ~}}
+{{~ if field.is_required ~}}
+    {{ field.dyalog_name }}: {{ form_val }}  ⍝ {{ form_ann }}
+{{~ else ~}}
+    ⍝ {{ field.dyalog_name }}: {{ form_val }}  ⍝ {{ form_ann }} (optional)
+{{~ end ~}}
+{{~ end ~}}
+{{~ else if op.request_content_type == "application/octet-stream" ~}}
+    body: 'data'  ⍝ binary
+{{~ else ~}}
+    data: 'data'  ⍝ {{ op.request_content_type ?? "body" }}
+{{~ end ~}}
+{{~ end ~}}
+)
+
+⍝ Make the request
+response ← client.{{ op.apl_tag }}.{{ op.apl_name }} args
+{{~ else ~}}
+⍝ Make the request (no parameters required)
+response ← client.{{ op.apl_tag }}.{{ op.apl_name }} ()
+{{~ end ~}}
+```
+
+{{~ if op.parameters.size > 0 }}
+**Parameters:**
+
+| Name | In | Required | Type | Description |
+|------|----|----------|------|-------------|
+{{~ for param in op.parameters ~}}
+| `{{ param.name }}` | {{ param.location }} | {{ if param.required }}Yes{{ else }}No{{ end }} | {{ param.type }} | {{ param.description }} |
+{{~ end ~}}
+{{~ end ~}}
+
+---
+
+{{~ end ~}}

@@ -6,23 +6,10 @@
 {{ description }}
 {{~ end ~}}
 
-## Installation
-
-### Prerequisites
-- Dyalog APL 18.0 or later
-- LINK (for loading the generated code)
-
-### Loading the Client
-
-```apl
-]LINK.Create # ./APLSource
-```
-
-This will load all the generated client code into your active workspace.
+> For installation, loading, error handling, and response structure guides, see the
+> [OpenAPI Dyalog documentation](https://dyalog.github.io/OpenAPI).
 
 ## Quick Start
-
-### 1. Initialize the Client
 
 ```apl
 ⍝ Create configuration
@@ -50,12 +37,13 @@ client ← ⎕NEW {{ class_name ?? "Client" }} config
 ```
 
 {{~ if security_schemes }}
-### 2. Authentication
+## Authentication
 
 This API uses the following authentication methods:
 
 {{~ for scheme in security_schemes }}
-#### {{ scheme.value.name }}
+### {{ scheme.value.name }}
+
 - **Type:** {{ scheme.value.type }}
 {{~ if scheme.value.type == "apikey" ~}}
 - **Location:** {{ scheme.value.in }}
@@ -74,80 +62,15 @@ This API uses the following authentication methods:
 {{~ end ~}}
 {{~ end ~}}
 
-## API Endpoints
+{%{ ## API Reference
 
 {{~ operations_by_tag = get_operations_by_tag ~}}
-{{~ for tag_group in operations_by_tag }}
-### {{ tag_group.key | string.capitalize }}
 
-{{~ for op in tag_group.value }}
-#### `{{ op.method }} {{ op.path }}`
-
-**Operation ID:** `{{ op.operation_id }}`
-
-{{~ if op.summary ~}}
-{{ op.summary }}
-{{~ end ~}}
-
-**Usage:**
-```apl
-{{~ if op.parameters.size > 0 || op.has_request_body ~}}
-⍝ Prepare arguments
-args ← (
-{{~ for param in op.parameters ~}}
-{{~ if param.required ~}}
-    {{ param.name }}: 'value'  ⍝ {{ param.schema.type }}{{~ if param.description }} - {{ param.description }}{{~ end ~}}
-{{~ end ~}}
-{{~ end ~}}
-{{~ if op.has_request_body ~}}
-    ⍝ Add request body parameters as needed
-    ⍝ TODO (Document what the request body parameters actually are)
-    ⍝ For now, check the endpoint.aplf file for this, and see what we are expecting.
-    ⍝ And check the spec. That's a useful thing to always check!
-{{~ end ~}}
-)
-
-⍝ Make the request
-response ← client.{{ tag_group.key }}.{{ op.operation_id }} args
-{{~ else ~}}
-⍝ Make the request (no parameters required)
-response ← client.{{ tag_group.key }}.{{ op.operation_id }} ()
-{{~ end ~}}
-```
-
-{{~ if op.parameters.size > 0 }}
-**Parameters:**
-{{~ for param in op.parameters ~}}
-- `{{ param.name }}` ({{ param.in }}){{~ if param.required }} **[required]**{{~ end ~}}{{~ if param.schema.type }}: {{ param.schema.type }}{{~ end ~}}{{~ if param.description }} - {{ param.description }}{{~ end ~}}
-
-{{~ end ~}}
-{{~ end ~}}
-
----
-
-{{~ end ~}}
-{{~ end ~}}
-
-## Response Handling
-
-All API methods return an HttpCommand response object with the following structure:
-
-```apl
-response.(
-    Data        ⍝ Parsed JSON response as namespace
-    HttpStatus  ⍝ HTTP status code (200, 404, etc.)
-    HttpMessage ⍝ HTTP status message
-    Headers     ⍝ Response headers
-    ⍝ And more, see: https://dyalog.github.io/HttpCommand/latest/result-response/
-)
-```
-
-**Example:**
-```apl
-response ← client.health.getHealth ()
-⎕← 'Status: ', response.HttpStatus
-⎕← 'Data: ', response.Data
-```
+| Tag | Endpoints | Reference |
+|-----|-----------|-----------|
+{{~ for tag_group in operations_by_tag ~}}
+| {{ tag_group.key }} | {{ tag_group.value.size }} | [docs/{{ tag_group.key | string.replace " " "-" }}.md](docs/{{ tag_group.key | string.replace " " "-" }}.md) |
+{{~ end ~}} }%}
 
 {{~ if schemas.size > 0 }}
 ## Generated Models
@@ -155,32 +78,11 @@ response ← client.health.getHealth ()
 The following data models are available in the `models` namespace:
 
 {{~ for schema in schemas ~}}
-- **{{ schema.key }}**{{~ if schema.value.description }} - {{ schema.value.description }}{{~ end ~}}
+- **{{ schema.key }}**{{~ if schema.value.description }} — {{ schema.value.description }}{{~ end ~}}
+{{~ end ~}}
 {{~ end ~}}
 
-You can use these models as reference for constructing request bodies and understanding response structures.
-{{~ end ~}}
-
-## Error Handling
-
-The client returns HttpCommand response objects. Check the `HttpStatus` field to determine success:
-
-```apl
-response ← client.users.getUserById (userId: 'some-id')
-
-:If response.HttpStatus = 200
-    ⍝ Success
-    user ← response.Data
-:Else
-    ⍝ Error occurred
-    ⎕← 'Error: ', response.HttpMessage
-    ⎕← 'Details: ', response.Data
-:EndIf
-```
-
-## Version Information
-
-You can check the generated client version:
+## Version
 
 ```apl
 ⎕← client.∆.Version ⍬
