@@ -112,5 +112,6 @@ public class OperationTemplateContext
     /// <summary>
     /// Whether this operation requires any security/authentication.
     /// </summary>
-    public bool HasSecurity => Security != null && Security.Count > 0;
+    public bool HasSecurity =>
+        Security != null && Security.Count > 0 && !Security.Any(requirement => requirement.Count == 0);
 }

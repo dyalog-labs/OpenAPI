@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.OpenApi;
 using Microsoft.OpenApi.Reader;
 using Moq;
+using OpenAPIDyalog.Models;
 using OpenAPIDyalog.Services;
 using OpenAPIDyalog.Services.Interfaces;
 using Scriban;
@@ -191,5 +192,54 @@ public class EndpointGeneratorServiceTests : IDisposable
         var inlineSchemas = await service.GenerateEndpointsAsync(document, _tempDir);
 
         Assert.Empty(inlineSchemas);
+    }
+
+    [Fact]
+    public async Task GenerateEndpointsAsync_AnonymousSecurityAlternative_DoesNotRequireAuth()
+    {
+        var document = await LoadDocumentAsync("""
+            {
+              "openapi": "3.0.0",
+              "info": { "title": "Test", "version": "1.0.0" },
+              "components": {
+                "securitySchemes": {
+                  "apiKeyAuth": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-API-Key"
+                  }
+                }
+              },
+              "paths": {
+                "/status": {
+                  "get": {
+                    "operationId": "getStatus",
+                    "tags": ["system"],
+                    "security": [{}, { "apiKeyAuth": [] }],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              }
+            }
+            """);
+
+        OperationTemplateContext? capturedContext = null;
+        var emptyTemplate = Template.Parse("");
+        var mock = new Mock<ITemplateService>();
+        mock.Setup(t => t.LoadTemplateAsync(It.IsAny<string>())).ReturnsAsync(emptyTemplate);
+        mock.Setup(t => t.RenderAsync(It.IsAny<Template>(), It.IsAny<object>()))
+            .Callback<Template, object>((_, context) =>
+            {
+                capturedContext = Assert.IsType<OperationTemplateContext>(context);
+            })
+            .ReturnsAsync("");
+        mock.Setup(t => t.SaveOutputAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+
+        var service = new EndpointGeneratorService(mock.Object, NullLogger<EndpointGeneratorService>.Instance);
+        await service.GenerateEndpointsAsync(document, _tempDir);
+
+        Assert.NotNull(capturedContext);
+        Assert.False(capturedContext!.HasSecurity);
+        Assert.Equal(new[] { "apiKeyAuth" }, capturedContext.SecuritySchemeNames);
     }
 }
