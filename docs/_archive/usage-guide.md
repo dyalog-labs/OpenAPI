@@ -31,7 +31,7 @@ This will create a complete APL client in the `./output` directory.
 
 ```apl
 ⍝ Create a client instance
-client ← ⎕NEW Client (baseURL: 'https://api.example.com/v4')
+client ← ⎕NEW Client (baseUrl: 'https://api.example.com/v4')
 
 ⍝ Call an API method
 result ← api.pet.findPetsByStatus.syncDetailed (client:client ⋄ status:'available')

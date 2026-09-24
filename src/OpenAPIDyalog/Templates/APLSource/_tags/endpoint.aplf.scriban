@@ -1,7 +1,7 @@
 response←{{ operation_id }} argsNs;headerParams;queryParams;body;clientArgs;secSchemes
 ⍝ {{ method | string.upcase }} {{ path }}
 {{~ if summary ~}}
-⍝ {{ summary }}
+{{ comment_lines summary }}
 {{~ end ~}}
 {{~ if description ~}}
 {{ comment_lines description }}

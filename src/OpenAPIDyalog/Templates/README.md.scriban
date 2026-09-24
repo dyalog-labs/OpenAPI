@@ -14,7 +14,7 @@
 ```apl
 ⍝ Create configuration
 config ← (
-{{~ if base_url }}    baseURL: '{{ base_url }}'{{~ else }}    baseURL: 'https://your-api-server.com'{{~ end ~}}
+{{~ if base_url }}    baseUrl: '{{ base_url }}'{{~ else }}    baseUrl: 'https://your-api-server.com'{{~ end ~}}
 {{~ if security_schemes }}
     security: (
         ⍝ Configure your authentication

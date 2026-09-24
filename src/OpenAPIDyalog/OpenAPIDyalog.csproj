@@ -13,7 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
     <PackageReference Include="Microsoft.OpenApi" Version="3.3.0" />
     <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.3.0" />
-    <PackageReference Include="Scriban" Version="6.5.2" />
+    <PackageReference Include="Scriban" Version="7.0.6" />
   </ItemGroup>
 
   <ItemGroup>

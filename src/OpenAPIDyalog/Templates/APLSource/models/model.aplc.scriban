@@ -22,7 +22,29 @@
     ∇
 {{~ else ~}}
 {{~ for prop in properties ~}}
-    ⍝ {{ prop.api_name }}: {{ prop.type }}{{ if prop.format }} ({{ prop.format }}){{ end }}{{ if prop.is_read_only }} [readOnly]{{ else if prop.is_write_only }} [writeOnly]{{ end }}{{ if prop.is_nullable }} [nullable]{{ end }}{{ if prop.is_required }}, required{{ else }}, optional{{ end }}{{ if prop.has_enum_values }}, enum: [{{ for v in prop.enum_values }}{{ v.api_value }}{{ if !for.last }}, {{ end }}{{ end }}]{{ end }}{{ if prop.default_value }}, default: {{ prop.default_value }}{{ end }}{{ if prop.is_reference }}, REFERENCE{{ end }}
+{{~ prop_comment = prop.api_name + ": " + prop.type ~}}
+{{~ if prop.format ~}}{{~ prop_comment = prop_comment + " (" + prop.format + ")" ~}}{{~ end ~}}
+{{~ if prop.is_read_only ~}}
+{{~ prop_comment = prop_comment + " [readOnly]" ~}}
+{{~ else if prop.is_write_only ~}}
+{{~ prop_comment = prop_comment + " [writeOnly]" ~}}
+{{~ end ~}}
+{{~ if prop.is_nullable ~}}{{~ prop_comment = prop_comment + " [nullable]" ~}}{{~ end ~}}
+{{~ if prop.is_required ~}}
+{{~ prop_comment = prop_comment + ", required" ~}}
+{{~ else ~}}
+{{~ prop_comment = prop_comment + ", optional" ~}}
+{{~ end ~}}
+{{~ if prop.has_enum_values ~}}
+{{~ enum_values = "" ~}}
+{{~ for v in prop.enum_values ~}}
+{{~ enum_values = enum_values + v.api_value + (for.last ? "" : ", ") ~}}
+{{~ end ~}}
+{{~ prop_comment = prop_comment + ", enum: [" + enum_values + "]" ~}}
+{{~ end ~}}
+{{~ if prop.default_value ~}}{{~ prop_comment = prop_comment + ", default: " + prop.default_value ~}}{{~ end ~}}
+{{~ if prop.is_reference ~}}{{~ prop_comment = prop_comment + ", REFERENCE" ~}}{{~ end ~}}
+    {{ comment_lines prop_comment | string.replace "\n" "\n    " }}
 {{~ end ~}}
 {{~ if has_enums ~}}
 

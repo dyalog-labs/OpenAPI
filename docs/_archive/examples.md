@@ -18,7 +18,7 @@ dotnet run -- ../pet-store/openapi.json ../pet-store/PetStore-Client
 ]LINK.Import # pet-store/PetStore-Client/APLSource
 
 ⍝ Create a client instance
-client←⎕NEW Client (baseURL:'https://petstore3.swagger.io/api/v3')
+client←⎕NEW Client (baseUrl:'https://petstore3.swagger.io/api/v3')
 
 ⍝ Find available pets
 pets←api.pet.findPetsByStatus.sync (client:client ⋄ status:'available')
