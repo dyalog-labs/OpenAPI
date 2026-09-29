@@ -49,7 +49,9 @@ public class OpenApiService : IOpenApiService
             {
                 Document   = document,
                 Diagnostic = diagnostic,
-                IsSuccess  = diagnostic?.Errors.Count == 0
+                // With validation disabled, any document the reader produced is usable;
+                // its diagnostics are reported as warnings instead of failing the run.
+                IsSuccess  = document != null && (disableValidation || (diagnostic?.Errors.Count ?? 0) == 0)
             };
         }
         catch (Exception ex)

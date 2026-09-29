@@ -88,6 +88,14 @@ public static class GeneratorApplication
             return 1;
         }
 
+        if (result.Diagnostic?.Errors?.Count > 0)
+        {
+            appLogger.LogWarning("Continuing despite {Count} error(s) in the specification (--no-validation):",
+                result.Diagnostic.Errors.Count);
+            foreach (var error in result.Diagnostic.Errors)
+                appLogger.LogWarning("  {Pointer} — {Message}", error.Pointer, error.Message);
+        }
+
         var document = result.Document!;
 
         // Log document info (replaces DisplayDocumentInfo / DisplayPaths).
