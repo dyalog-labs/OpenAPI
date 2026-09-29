@@ -11,9 +11,9 @@
     <PackageReference Include="CaseConverter" Version="2.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
-    <PackageReference Include="Microsoft.OpenApi" Version="3.3.0" />
-    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.3.0" />
-    <PackageReference Include="Scriban" Version="7.0.6" />
+    <PackageReference Include="Microsoft.OpenApi" Version="3.10.2" />
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.10.2" />
+    <PackageReference Include="Scriban" Version="7.5.0" />
   </ItemGroup>
 
   <ItemGroup>
