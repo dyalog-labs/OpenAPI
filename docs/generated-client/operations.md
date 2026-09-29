@@ -32,11 +32,18 @@ response ← client.user.List ()
 
 ### Path parameters
 
-Path parameters are always required. The value must be a character vector or a scalar number — anything else signals an error. Numeric values are converted to strings automatically before being substituted into the URL.
+Path parameters are always required. The value must be a character vector or a scalar number — anything else signals an error. Numeric values are converted to strings automatically, and the value is percent-encoded, so a value containing `/`, `?` or a space stays within its own path segment.
 
 ### Query and header parameters
 
 These are read from `argsNs` by name. Required parameters signal an error if absent; optional parameters are simply omitted from the request if not set on the namespace.
+
+An array query parameter that the spec declares with `explode: false` is sent as one value, its items joined by the delimiter for its style: `,` for `form` (the default), a space for `spaceDelimited`, `|` for `pipeDelimited`. Pass a vector of strings or numbers, or a single string:
+
+```apl
+response ← client.weather.GetForecast (latitude:'51.5' ⋄ longitude:'-0.12' ⋄ hourly:'temperature_2m' 'rain')
+⍝ GET /v1/forecast?hourly=temperature_2m%2Crain&latitude=51.5&longitude=-0.12
+```
 
 ### Request body
 

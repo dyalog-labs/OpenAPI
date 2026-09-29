@@ -57,7 +57,11 @@ body←()
 {{~ if param.in == "Query" ~}}
 ⍝ Query parameter: {{ param.name }}
 :If (2=argsNs.⎕NC'{{ param.name }}')
+{{~ if param.schema.type == "Array" && !param.explode ~}}
+    queryParams.{{ param.name }}←'{{ if param.style == "SpaceDelimited" }} {{ else if param.style == "PipeDelimited" }}|{{ else }},{{ end }}'c.∆.utils.joinArray argsNs.{{ param.name }} ⍝ explode: false
+{{~ else ~}}
     queryParams.{{ param.name }}←argsNs.{{ param.name }}
+{{~ end ~}}
 :{{ if param.required }}Else
     ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ param.name }}')
 :{{ end }}EndIf

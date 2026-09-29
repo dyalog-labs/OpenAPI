@@ -192,4 +192,49 @@ public class EndpointGeneratorServiceTests : IDisposable
 
         Assert.Empty(inlineSchemas);
     }
+
+    // ── Query parameter serialisation (real templates) ─────────────────────
+
+    [Fact]
+    public async Task GenerateEndpointsAsync_ArrayQueryParam_HonoursExplode()
+    {
+        var document = await LoadDocumentAsync("""
+            {
+              "openapi": "3.0.0",
+              "info": { "title": "Test", "version": "1.0.0" },
+              "paths": {
+                "/forecast": {
+                  "get": {
+                    "operationId": "getForecast",
+                    "tags": ["weather"],
+                    "parameters": [
+                      { "name": "hourly", "in": "query", "explode": false,
+                        "schema": { "type": "array", "items": { "type": "string" } } },
+                      { "name": "ids", "in": "query", "style": "pipeDelimited", "explode": false,
+                        "schema": { "type": "array", "items": { "type": "integer" } } },
+                      { "name": "tags", "in": "query",
+                        "schema": { "type": "array", "items": { "type": "string" } } },
+                      { "name": "city", "in": "query", "schema": { "type": "string" } }
+                    ],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              }
+            }
+            """);
+
+        var templates = new TemplateService(NullLogger<TemplateService>.Instance);
+        var service = new EndpointGeneratorService(templates, NullLogger<EndpointGeneratorService>.Instance);
+        await service.GenerateEndpointsAsync(document, _tempDir);
+
+        var file = Directory.GetFiles(_tempDir, "*.aplf", SearchOption.AllDirectories).Single();
+        var apl = await File.ReadAllTextAsync(file);
+
+        // explode: false → one delimited value, by style
+        Assert.Contains("queryParams.hourly←','c.∆.utils.joinArray argsNs.hourly", apl);
+        Assert.Contains("queryParams.ids←'|'c.∆.utils.joinArray argsNs.ids", apl);
+        // explode: true (the default for form) and non-array values are passed through unchanged
+        Assert.Contains("queryParams.tags←argsNs.tags", apl);
+        Assert.Contains("queryParams.city←argsNs.city", apl);
+    }
 }

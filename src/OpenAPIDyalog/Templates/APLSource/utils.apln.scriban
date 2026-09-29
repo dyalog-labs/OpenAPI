@@ -8,7 +8,7 @@
         ⍝ cArgs is a namespace containing HttpCommand arguments
         ⍝ Returns the HttpCommand response
         cArgs.BaseURL←c.∆.config.baseUrl
-        cArgs.Headers,←'User-Agent' ((' Dyalog OpenAPI Generated Client',2⊃c.∆.Version),⍨'Dyalog-',1↓∊'/',¨2↑c.∆.HttpCommand.Version)
+        cArgs.Headers,←'User-Agent' ((' Dyalog OpenAPI Generated Client/',2⊃c.∆.Version),⍨'Dyalog-',1↓∊'/',¨2↑c.∆.HttpCommand.Version)
         cArgs.Headers,←c.∆.config ⎕VGET ⊂'headers' ⍬
         cArgs.TranslateData←1
         cArgs.HeaderSubstitution←'env:[' ']' 
@@ -96,6 +96,15 @@
         :EndIf
 
     ∇
+
+      joinArray←{
+        ⍝ Serialise an array query parameter sent with explode: false as one value
+        ⍝ ⍺: delimiter for the parameter's style (',' form, ' ' spaceDelimited, '|' pipeDelimited)
+        ⍝ ⍵: a string, a number, or a vector of strings or numbers
+        0=≡⍵:,⍕⍵
+        (1=≡⍵)∧0=10|⎕DR ⍵:⍵
+        (≢⍺)↓∊⍺∘,¨⍕¨⍵
+      }
 
       isValidPathParam←{
         ⍝ True if argument is a character vector or a scalar number

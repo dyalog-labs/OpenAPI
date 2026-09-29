@@ -27,6 +27,10 @@ The scheme used is determined by the operation's declared security requirements 
 
 OAuth is not currently supported.
 
+## `joinArray`
+
+Joins an array query parameter into one value, for parameters the spec declares with `explode: false`. The left argument is the delimiter for the parameter's style (`,` for `form`, a space for `spaceDelimited`, `|` for `pipeDelimited`). A single string or number is passed through as it is.
+
 ## `isValidPathParam`
 
 Validates that a value is usable as a path parameter. A valid path parameter is either a character vector or a scalar number. Generated operation functions call this before substituting values into URL path templates.
