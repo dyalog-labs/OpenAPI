@@ -123,4 +123,4 @@ Prefixes each line of `text` with `⍝ `.
 static string ToDyalogPath(string path)
 ```
 
-Converts an OpenAPI path template (e.g. `/pets/{petId}`) to a Dyalog APL expression (e.g. `'/pets/',(⍕argsNs.petId)`).
+Converts an OpenAPI path template (e.g. `/pets/{petId}`) to a Dyalog APL expression (e.g. `'/pets/',(c.∆.HttpCommand.UrlEncode⍕argsNs.petId)`).

@@ -12,7 +12,9 @@ public static class PathConverter
 
     /// <summary>
     /// Converts an OpenAPI path with parameter placeholders to an APL expression.
-    /// Example: "/user/{userId}" → "'/user/',(⍕argsNs.userId)"
+    /// Each parameter value is percent-encoded, so a value containing "/", "?", "#" or a
+    /// space stays within its own path segment.
+    /// Example: "/user/{userId}" → "'/user/',(c.∆.HttpCommand.UrlEncode⍕argsNs.userId)"
     /// </summary>
     public static string ToDyalogPath(string path)
     {
@@ -30,7 +32,7 @@ public static class PathConverter
             }
 
             var paramName = match.Groups[1].Value;
-            parts.Add($"(⍕argsNs.{StringHelpers.ToValidAplName(paramName)})");
+            parts.Add($"(c.∆.HttpCommand.UrlEncode⍕argsNs.{StringHelpers.ToValidAplName(paramName)})");
 
             currentIndex = match.Index + match.Length;
         }

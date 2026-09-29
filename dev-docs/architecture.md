@@ -89,7 +89,7 @@ Each template receives a typed context object. The two main ones are:
 
 ## Key utilities
 
-**`PathConverter`** — converts an OpenAPI path template such as `/pets/{petId}` into a Dyalog APL expression: `'/pets/',(⍕argsNs.petId)`. Segments and parameter references are concatenated with `,`.
+**`PathConverter`** — converts an OpenAPI path template such as `/pets/{petId}` into a Dyalog APL expression: `'/pets/',(c.∆.HttpCommand.UrlEncode⍕argsNs.petId)`. Segments and parameter references are concatenated with `,`. Each parameter value is percent-encoded with `HttpCommand.UrlEncode`, so a value containing `/` or a space stays in its own path segment.
 
 **`StringHelpers.ToValidAplName`** — converts an arbitrary string into a valid APL identifier. If the name contains characters outside the APL identifier character set, or begins with a digit, it is prefixed with `⍙` and each invalid character is replaced with `⍙<UCS code>⍙`. This is the same escaping scheme used by Dyalog's JSON name mangling (`7159⌶`).
 

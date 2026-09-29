@@ -88,7 +88,7 @@ Used by `_tags/endpoint.aplf.scriban`.
 | `operation_id` | Sanitised, PascalCase function name |
 | `method` | HTTP method (lowercase) |
 | `path` | Original path string (e.g. `/pets/{petId}`) |
-| `dyalog_path` | Path converted to Dyalog APL expression (e.g. `'/pets/',(⍕argsNs.petId)`) |
+| `dyalog_path` | Path converted to Dyalog APL expression (e.g. `'/pets/',(c.∆.HttpCommand.UrlEncode⍕argsNs.petId)`) |
 | `summary` | Operation summary |
 | `description` | Operation description |
 | `parameters` | List of parameters, each with `name`, `in`, `required`, `schema` |
