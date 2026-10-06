@@ -72,9 +72,9 @@ A JSON body's field depends on its schema:
 | An array of a named schema, e.g. of `User` | `user` | A vector of namespaces or `models.User` instances |
 | A named schema that is an array, e.g. `UserList`, an array of `User` | `userList` | A vector of namespaces or `models.User` instances |
 | A named schema that is anything else, e.g. `Note`, a string | `note` | Any value that `⎕JSON` can convert |
-| An object defined in the operation itself | `<operationId>Request`, e.g. `createUserRequest` | A namespace, or an instance of the [model](models.md) generated for it |
+| An object defined in the operation itself, including a free-form one | `<operationId>Request`, e.g. `createUserRequest` | A namespace, or an instance of the [model](models.md) generated for it |
 | An array of objects defined in the operation itself | `<operationId>RequestItem` | A vector of namespaces or instances of the model generated for them |
-| Anything else (a string, a free-form object, …) | `body` | Any value that `⎕JSON` can convert |
+| Anything else defined in the operation itself (a string, an array of strings, …) | `body` | Any value that `⎕JSON` can convert |
 
 For example, for an operation that takes a `User`:
 

@@ -77,6 +77,12 @@ public class ModelProperty
     public string DyalogName { get; set; } = string.Empty;
 
     /// <summary>
+    /// The name of the class's property. This is DyalogName, unless that would clash with a member
+    /// the class itself defines (FormatNS, an Enum… constants namespace, …), when "_" is appended.
+    /// </summary>
+    public string MemberName { get; set; } = string.Empty;
+
+    /// <summary>
     /// The APL type string (str, int, bool, array[T], namespace, or a model class name).
     /// </summary>
     public string Type { get; set; } = "any";

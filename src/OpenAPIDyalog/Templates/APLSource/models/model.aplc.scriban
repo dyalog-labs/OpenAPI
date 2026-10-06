@@ -35,6 +35,7 @@
 {{~ else ~}}
 {{~ for prop in properties ~}}
 {{~ prop_comment = prop.api_name + ": " + prop.type ~}}
+{{~ if prop.member_name != prop.dyalog_name ~}}{{~ prop_comment = prop.api_name + " (property " + prop.member_name + "): " + prop.type ~}}{{~ end ~}}
 {{~ if prop.format ~}}{{~ prop_comment = prop_comment + " (" + prop.format + ")" ~}}{{~ end ~}}
 {{~ if prop.is_read_only ~}}
 {{~ prop_comment = prop_comment + " [readOnly]" ~}}
@@ -58,6 +59,8 @@
 {{~ if prop.is_reference ~}}{{~ prop_comment = prop_comment + ", REFERENCE" ~}}{{~ end ~}}
     {{ comment_lines prop_comment | string.replace "\n" "\n    " }}
 {{~ end ~}}
+
+    :field private ⍙v ⍝ property values, by JSON name (as mangled by ⎕JSON)
 {{~ if has_enums ~}}
 
     ⍝ Enum constants
@@ -67,10 +70,10 @@
 {{~ end ~}}
 
 {{~ for prop in properties ~}}
-    :Property {{ prop.dyalog_name }}
+    :Property {{ prop.member_name }}
         :Access public
         ∇ r←Get
-            r←⎕VGET ⊂'_{{ prop.dyalog_name }}' (⊂'null')
+            r←⍙v ⎕VGET ⊂'{{ prop.dyalog_name }}' (⊂'null')
         ∇
     {{~ if !prop.is_read_only ~}}
         ∇ Set args
@@ -79,10 +82,10 @@
             {{~ if prop.enum_allows_null ~}}
             :AndIf (⊂'null')≢args.NewValue ⍝ JSON null
             {{~ end ~}}
-                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.dyalog_name }} must be one of: {{ for v in prop.enum_values }}{{ v.api_value | string.replace "'" "''" }}{{ if !for.last }}, {{ end }}{{ end }}{{ if prop.enum_allows_null }}, null{{ end }}'))
+                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.member_name }} must be one of: {{ for v in prop.enum_values }}{{ (one_line v.api_value) | string.replace "'" "''" }}{{ if !for.last }}, {{ end }}{{ end }}{{ if prop.enum_allows_null }}, null{{ end }}'))
             :EndIf
         {{~ end ~}}
-            _{{ prop.dyalog_name }}←args.NewValue
+            ⍙v.{{ prop.dyalog_name }}←args.NewValue
         ∇
     {{~ end ~}}
     :EndProperty
@@ -91,11 +94,13 @@
     ∇ make0
         :Access public
         :Implements constructor
+        ⍙v←⎕NS ''
     ∇
 
     ∇ make1 args
         :Access public
         :Implements constructor
+        ⍙v←⎕NS ''
         {{~ if has_writable_required_fields ~}}
         ⍝ Validate required fields (readOnly fields are server-generated, not required from caller)
         missing←({{ for f in writable_required_fields }}(⊂,'{{ f }}'){{ if !for.last }},{{ end }}{{ end }})~args.⎕NL ¯2 ¯9 ⍝ values and namespaces
@@ -106,7 +111,7 @@
         ⍝ Set properties through their setters
         {{~ for prop in properties ~}}
         {{~ if !prop.is_read_only ~}}
-        :If (args.⎕NC '{{ prop.dyalog_name }}')∊2 9 ⋄ {{ prop.dyalog_name }}←args.{{ prop.dyalog_name }} ⋄ :EndIf
+        :If (args.⎕NC '{{ prop.dyalog_name }}')∊2 9 ⋄ {{ prop.member_name }}←args.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ end ~}}
         {{~ end ~}}
     ∇
@@ -119,17 +124,17 @@
         build←⎕NS ''
         {{~ for prop in properties ~}}
         {{~ if !prop.is_read_only ~}}
-        :If (⎕NC '_{{ prop.dyalog_name }}')∊2 9
+        :If (⍙v.⎕NC '{{ prop.dyalog_name }}')∊2 9
             {{~ if prop.is_reference && prop.is_array ~}}
-            build.{{ prop.dyalog_name }}←asNS¨vec {{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←asNS¨vec ⍙v.{{ prop.dyalog_name }}
             {{~ else if prop.is_reference ~}}
-            build.{{ prop.dyalog_name }}←asNS {{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←asNS ⍙v.{{ prop.dyalog_name }}
             {{~ else if prop.is_string_array ~}}
-            build.{{ prop.dyalog_name }}←vec⊆{{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←vec⊆⍙v.{{ prop.dyalog_name }}
             {{~ else if prop.is_array ~}}
-            build.{{ prop.dyalog_name }}←vec {{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←vec ⍙v.{{ prop.dyalog_name }}
             {{~ else ~}}
-            build.{{ prop.dyalog_name }}←{{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←⍙v.{{ prop.dyalog_name }}
             {{~ end ~}}
         :EndIf
         {{~ end ~}}
@@ -143,17 +148,17 @@
         {{~ if prop.is_reference && prop.is_array ~}}
         :If 2=ns.⎕NC '{{ prop.dyalog_name }}'
             :If (⊂'null')≡ns.{{ prop.dyalog_name }} ⍝ JSON null
-                inst._{{ prop.dyalog_name }}←⊂'null'
+                ⍙v.{{ prop.dyalog_name }}←⊂'null'
             :ElseIf 0∊⍴ns.{{ prop.dyalog_name }}
-                inst._{{ prop.dyalog_name }}←⍬
+                ⍙v.{{ prop.dyalog_name }}←⍬
             :Else
-                inst._{{ prop.dyalog_name }}←{(⎕NEW (⊃⊃⎕CLASS ⎕THIS).##.{{ prop.reference_type }}).FromResponse ⍵}¨ns.{{ prop.dyalog_name }}
+                ⍙v.{{ prop.dyalog_name }}←{(⎕NEW (⊃⊃⎕CLASS ⎕THIS).##.{{ prop.reference_type }}).FromResponse ⍵}¨ns.{{ prop.dyalog_name }}
             :EndIf
         :EndIf
         {{~ else if prop.is_reference ~}}
-        :If 9=ns.⎕NC '{{ prop.dyalog_name }}' ⋄ inst._{{ prop.dyalog_name }}←(⎕NEW (⊃⊃⎕CLASS ⎕THIS).##.{{ prop.reference_type }}).FromResponse ns.{{ prop.dyalog_name }} ⋄ :EndIf
+        :If 9=ns.⎕NC '{{ prop.dyalog_name }}' ⋄ ⍙v.{{ prop.dyalog_name }}←(⎕NEW (⊃⊃⎕CLASS ⎕THIS).##.{{ prop.reference_type }}).FromResponse ns.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ else ~}}
-        :If 0<ns.⎕NC '{{ prop.dyalog_name }}' ⋄ inst._{{ prop.dyalog_name }}←ns.{{ prop.dyalog_name }} ⋄ :EndIf
+        :If 0<ns.⎕NC '{{ prop.dyalog_name }}' ⋄ ⍙v.{{ prop.dyalog_name }}←ns.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ end ~}}
         {{~ end ~}}
     ∇

@@ -31,7 +31,9 @@ An instance can also be created empty, with `⎕NEW models.Pet`, and its propert
 
 ## Properties
 
-Each property in the schema becomes a property of the class, with the same name. A name that is not valid APL is mangled in the same way as for [parameters](operations.md#passing-parameters), and `⎕JSON` restores the original name when the model is sent.
+Each property in the schema becomes a property of the class, with the same name. A name that is not valid APL is mangled in the same way as for [parameters](operations.md#passing-parameters), and `⎕JSON` restores the original name when the model is sent. In the rare case that a name is one the class uses itself, such as `FormatNS`, the property has `_` appended (`FormatNS_`); the comment at the top of the class file lists each property's name.
+
+When building an instance from a namespace, or reading one with `FromResponse`, the namespace uses the JSON names (mangled where needed), not any `_`-appended property names.
 
 A property that has not been set reads as `⊂'null'`. A property the schema marks `readOnly` is set by the server: it can be read from a model built with [`FromResponse`](#fromresponse), but cannot be set, and is not sent in a request.
 

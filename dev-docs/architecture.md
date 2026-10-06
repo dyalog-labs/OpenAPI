@@ -72,7 +72,7 @@ Operations with no tag are placed under the `default` tag.
 
 ### `ModelGeneratorService`
 
-Renders `models/model.aplc.scriban` once per component object schema, and once per inline request body schema found by `EndpointGeneratorService` (named `<OperationId>Request`). Array and primitive schemas get no class; a `$ref` to one is treated as that schema. `allOf` sub-schemas are flattened into one class, to any depth; a schema with only `additionalProperties` becomes a map type.
+Renders `models/model.aplc.scriban` once per component object schema, and once per inline request body schema found by `EndpointGeneratorService` (named `<OperationId>Request`). Array and primitive schemas get no class; a `$ref` to one is treated as that schema. `allOf` sub-schemas are flattened into one class, to any depth; an object schema with no properties of its own becomes a map type. A model keeps its property values in a private namespace, `⍙v`, by JSON name, so a property cannot clash with the class's own members; a property whose name is one the template uses (`FormatNS`, `args`, an `Enum…` namespace, …) has `_` appended.
 
 `CodeGeneratorService` first checks that no two schema names map to the same class name (e.g. `pet` and `Pet`), and stops with an error if they do, as one class would overwrite the other.
 

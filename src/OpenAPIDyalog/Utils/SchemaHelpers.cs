@@ -32,10 +32,15 @@ public static class SchemaHelpers
     /// primitives do not: a component that is an array of models, say, is used as a vector of them.
     /// </summary>
     public static bool IsObjectModel(IOpenApiSchema schema) =>
-        OperationNaming.IsType(schema, JsonSchemaType.Object)
-        || schema.Properties is { Count: > 0 }
-        || schema.AllOf is { Count: > 0 }
-        || schema.AdditionalProperties != null;
+        IsObjectModel(schema, new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance));
+
+    // An allOf makes an object only if one of its members does: { "allOf": [{ "type": "string" }] } is a string.
+    private static bool IsObjectModel(IOpenApiSchema schema, HashSet<IOpenApiSchema> seen) =>
+        seen.Add(schema)
+        && (OperationNaming.IsType(schema, JsonSchemaType.Object)
+            || schema.Properties is { Count: > 0 }
+            || schema.AdditionalProperties != null
+            || (schema.AllOf?.Any(member => IsObjectModel(member, seen)) ?? false));
 
     /// <summary>
     /// Whether a schema is a $ref to a component that gets a model class.

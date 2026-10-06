@@ -65,6 +65,15 @@ public class ModelGeneratorService
     }
 
 
+    /// <summary>
+    /// Names the model template defines in a class: methods, their locals, and the values namespace.
+    /// </summary>
+    private static readonly HashSet<string> ReservedMemberNames =
+    [
+        "make0", "make1", "FormatNS", "FromResponse", "Get", "Set", "⍙v",
+        "args", "missing", "build", "asNS", "vec", "inst", "ns", "r",
+    ];
+
     // ── Core helpers ────────────────────────────────────────────────────────────
 
     private async Task GenerateModelAsync(ModelTemplateContext context, string outputDirectory)
@@ -113,6 +122,22 @@ public class ModelGeneratorService
         foreach (var clash in context.EnumProperties.GroupBy(p => p.EnumFieldName).Where(g => g.Count() > 1))
             foreach (var prop in clash)
                 prop.EnumFieldName = prop.DyalogName;
+
+        // A property is a member of the class, so must not take the name of one the template defines
+        // (its methods, their local names, the values namespace or an enum constants namespace).
+        var taken = ReservedMemberNames
+            .Concat(context.EnumProperties.Select(p => "Enum" + p.EnumFieldName))
+            .ToHashSet();
+        foreach (var prop in context.Properties)
+            taken.Add(prop.DyalogName);
+        foreach (var prop in context.Properties)
+        {
+            prop.MemberName = prop.DyalogName;
+            if (!ReservedMemberNames.Contains(prop.DyalogName)
+                && !context.EnumProperties.Any(p => "Enum" + p.EnumFieldName == prop.DyalogName))
+                continue;
+            do prop.MemberName += "_"; while (!taken.Add(prop.MemberName));
+        }
 
         return context;
     }

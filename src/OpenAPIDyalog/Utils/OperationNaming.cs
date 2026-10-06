@@ -50,8 +50,8 @@ public static class OperationNaming
     }
 
     /// <summary>
-    /// The argsNs field for a JSON body that has no model (a string, a free-form object, etc.):
-    /// it is sent as given.
+    /// The argsNs field for a JSON body defined in the operation that has no model (a string, an
+    /// array of strings, etc.): it is sent as given. An object, even a free-form one, has a model.
     /// </summary>
     public const string UntypedJsonBodyArgName = "body";
 

@@ -222,9 +222,9 @@ public class GeneratedDocsTests : IDisposable
         var model = Read(await GenerateAsync(), "APLSource", "models", "Pet.aplc");
         var formatNS = model[model.IndexOf("∇ build←FormatNS", StringComparison.Ordinal)..model.IndexOf("∇ inst←FromResponse", StringComparison.Ordinal)];
 
-        Assert.DoesNotContain("_id", formatNS);
-        Assert.Contains("build.scores←vec scores", formatNS);
-        Assert.Contains("build.friends←asNS¨vec friends", formatNS);
+        Assert.DoesNotContain("build.id", formatNS);
+        Assert.Contains("build.scores←vec ⍙v.scores", formatNS);
+        Assert.Contains("build.friends←asNS¨vec ⍙v.friends", formatNS);
     }
 
     // ── Inline models ──────────────────────────────────────────────────────
@@ -348,7 +348,7 @@ public class GeneratedDocsTests : IDisposable
 
         // As a property: a vector of Pet instances when read from a response
         var dog = Read(output, "APLSource", "models", "Dog.aplc");
-        Assert.Contains("build.litter←asNS¨vec litter", dog);
+        Assert.Contains("build.litter←asNS¨vec ⍙v.litter", dog);
         Assert.Contains(".##.Pet).FromResponse ⍵}¨ns.litter", dog);
     }
 
@@ -460,6 +460,82 @@ public class GeneratedDocsTests : IDisposable
 
         // A nested model is a namespace or an instance (name class 9), not only an array (2)
         Assert.Contains(":If (args.⎕NC 'extra')∊2 9 ⋄ extra←args.extra ⋄ :EndIf", item);
-        Assert.Contains(":If (⎕NC '_extra')∊2 9", item);
+        Assert.Contains(":If (⍙v.⎕NC 'extra')∊2 9", item);
+    }
+
+    // ── Member names, line breaks and primitive allOf ──────────────────────
+
+    private const string MembersSpec = """
+        {
+          "openapi": "3.1.0",
+          "info": { "title": "Members", "version": "1.0.0" },
+          "paths": {
+            "/things": {
+              "post": {
+                "tags": ["thing"], "operationId": "addThing",
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Thing": {
+                "type": "object",
+                "properties": {
+                  "FormatNS": { "type": "string" },
+                  "args": { "type": "string" },
+                  "foo": { "type": "string" },
+                  "_foo": { "type": "string" },
+                  "mood": { "type": "string", "enum": ["calm", "two\nlines"] },
+                  "EnumMood": { "type": "string" },
+                  "code": { "$ref": "#/components/schemas/Code" }
+                }
+              },
+              "Code": { "allOf": [{ "type": "string" }] }
+            }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task PropertyNamesThatClashWithClassMembers_AreRenamed()
+    {
+        var thing = Read(await GenerateAsync(MembersSpec), "APLSource", "models", "Thing.aplc");
+
+        Assert.Contains(":Property FormatNS_", thing);
+        Assert.Contains(":Property args_", thing);
+        Assert.Contains(":Property EnumMood_", thing);
+        Assert.Contains(":If (args.⎕NC 'FormatNS')∊2 9 ⋄ FormatNS_←args.FormatNS ⋄ :EndIf", thing);
+        // foo and _foo are both plain properties, as values are kept in ⍙v
+        Assert.Contains(":Property foo\n", thing);
+        Assert.Contains(":Property _foo\n", thing);
+    }
+
+    [Fact]
+    public async Task StringLiterals_WriteLineBreaksAsCodes()
+    {
+        var thing = Read(await GenerateAsync(MembersSpec), "APLSource", "models", "Thing.aplc");
+
+        Assert.Contains("('two',(⎕UCS 10),'lines')", thing);
+        Assert.Contains("must be one of: calm, two lines'", thing);
+    }
+
+    [Fact]
+    public async Task AllOfOfAPrimitive_IsNotAModel()
+    {
+        var output = await GenerateAsync(MembersSpec);
+
+        Assert.False(File.Exists(Path.Combine(output, "APLSource", "models", "Code.aplc")));
+        Assert.DoesNotContain("⍙v.code←(⎕NEW", Read(output, "APLSource", "models", "Thing.aplc"));
+    }
+
+    [Fact]
+    public async Task InlineFreeFormBody_HasAMapModel()
+    {
+        var output = await GenerateAsync(MembersSpec);
+
+        Assert.Contains(":field _data", Read(output, "APLSource", "models", "AddThingRequest.aplc"));
+        Assert.Contains("argsNs.⎕NC'addThingRequest'", Read(output, "APLSource", "_tags", "thing", "AddThing.aplf"));
     }
 }

@@ -105,9 +105,32 @@ public static class StringHelpers
     }
 
     /// <summary>
-    /// Quotes a string as an APL character vector literal, doubling any embedded quotes.
+    /// Quotes a string as an APL character vector literal, doubling any embedded quotes. Control
+    /// characters such as line breaks cannot appear in a literal, so are written as ⎕UCS codes:
+    /// "a\nb" → ('a',(⎕UCS 10),'b').
     /// </summary>
-    public static string ToAplString(string text) => "'" + text.Replace("'", "''") + "'";
+    public static string ToAplString(string text)
+    {
+        if (!text.Any(char.IsControl))
+            return "'" + text.Replace("'", "''") + "'";
+
+        var parts = new List<string>();
+        var run   = new StringBuilder();
+        foreach (var c in text)
+        {
+            if (!char.IsControl(c))
+            {
+                run.Append(c == '\'' ? "''" : c.ToString());
+                continue;
+            }
+            if (run.Length > 0) parts.Add($"'{run}'");
+            run.Clear();
+            parts.Add($"(⎕UCS {(int)c})");
+        }
+        if (run.Length > 0) parts.Add($"'{run}'");
+
+        return "(" + string.Join(",", parts) + ")";
+    }
 
     /// <summary>
     /// Collapses a possibly multi-line string onto a single line, for use in a one-line
