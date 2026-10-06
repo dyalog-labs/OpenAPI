@@ -18,7 +18,7 @@ The right argument `argsNs` is a namespace whose fields correspond to the operat
 
 ## Passing parameters
 
-All parameters — path, query, header, and body — are passed as fields on the `argsNs` namespace:
+All parameters — path, query, header, and body — are passed as fields on the `argsNs` namespace. This includes parameters the spec declares for every operation on a path, as well as those declared for the operation itself:
 
 ```apl
 response ← client.user.GetById (id: 42)
@@ -29,6 +29,14 @@ For operations with no parameters, pass an empty namespace:
 ```apl
 response ← client.user.List ()
 ```
+
+A parameter whose name is not a valid APL name is passed under its mangled name, formed in the same way as [Dyalog's JSON name mangling](https://docs.dyalog.com/20.0/language-reference-guide/primitive-operators/i-beam/json-translate-name/): the name is prefixed with `⍙`, and each invalid character is replaced with `⍙<UCS code>⍙`. The original name is used in the request. For example, an `X-Request-ID` header is passed as `⍙X⍙45⍙Request⍙45⍙ID`, and a `page[size]` query parameter as `⍙page⍙91⍙size⍙93⍙`:
+
+```apl
+response ← client.user.List (⍙page⍙91⍙size⍙93⍙: 50)
+```
+
+The pages generated in `docs/` give the name to use for each parameter.
 
 ### Path parameters
 
@@ -51,10 +59,33 @@ How the body parameter is named on `argsNs` depends on the content type declared
 
 | Content type | Field name on `argsNs` |
 |---|---|
-| `application/json` | Named after the schema type in camelCase (e.g. `user` for a `User` schema) |
+| `application/json` | Named after the body's schema in camelCase — see below |
 | `application/octet-stream` | `body` |
 | `multipart/form-data` | One field per form field — see [Multipart form fields](#multipart-form-fields) below |
 | Other | `data` |
+
+A JSON body's field depends on its schema:
+
+| Schema | Field name | Value |
+|---|---|---|
+| A named schema, e.g. `User` | `user` | A namespace, or a `models.User` instance |
+| An array of a named schema, e.g. of `User` | `user` | A vector of namespaces or `models.User` instances |
+| An object defined in the operation itself | `<operationId>Request`, e.g. `createUserRequest` | A namespace, or an instance of the [model](models.md) generated for it |
+| An array of objects defined in the operation itself | `<operationId>RequestItem` | A vector of namespaces or instances of the model generated for them |
+| Anything else (a string, a free-form object, …) | `body` | Any value that `⎕JSON` can convert |
+
+For example, for an operation that takes a `User`:
+
+```apl
+⍝ A namespace…
+response ← client.user.CreateUser (user: (name: 'Ada' ⋄ email: 'ada@example.com'))
+
+⍝ …or a model instance, which checks required fields and enum values as it is built
+user ← ⎕NEW models.User (name: 'Ada' ⋄ email: 'ada@example.com')
+response ← client.user.CreateUser (user: user)
+```
+
+The page generated in `docs/` for each tag shows the fields of each request body.
 
 ### Multipart form fields
 

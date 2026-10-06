@@ -52,29 +52,32 @@ Task GenerateVersionAsync(OpenApiDocument document, string outputDirectory)
 Task CopyHttpCommandAsync(string outputDirectory)
 Task CopySpecificationAsync(string specificationPath, string outputDirectory)
 Task GenerateClientAsync(OpenApiDocument document, string outputDirectory)
-Task GenerateReadmeAsync(OpenApiDocument document, string outputDirectory)
+Task GenerateReadmeAsync(OpenApiDocument document, string outputDirectory, IEnumerable<string>? inlineModelNames = null)
+Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory)
 ```
+
+`GenerateTagDocsAsync` writes `docs/<tag>.md` for each tag, named by the tag's APL name.
 
 ## `EndpointGeneratorService`
 
 Generates one `.aplf` file per operation.
 
 ```csharp
-Task<List<(string Name, OpenApiSchema Schema)>> GenerateEndpointsAsync(
+Task<IReadOnlyDictionary<string, IOpenApiSchema>> GenerateEndpointsAsync(
     OpenApiDocument document,
     string outputDirectory,
-    string? @namespace)
+    string? @namespace = null)
 ```
 
-Returns a list of inline schemas discovered during generation (reserved for future model generation).
+Returns the inline request body schemas found during generation, keyed by the name of the model to generate for each.
 
 ## `ModelGeneratorService`
 
-Placeholder — not yet implemented. Both methods are intentional no-ops.
+Generates one model class per schema, in `APLSource/models/`.
 
 ```csharp
 Task GenerateComponentModelsAsync(OpenApiDocument document, string outputDirectory)
-Task GenerateInlineSchemaModelsAsync(List<(string Name, OpenApiSchema Schema)> schemas, string outputDirectory)
+Task GenerateInlineSchemaModelsAsync(IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, string outputDirectory)
 ```
 
 ## `TemplateService`
@@ -109,7 +112,7 @@ CLI configuration passed through the pipeline.
 static string ToValidAplName(string name)
 ```
 
-Converts an arbitrary string to a valid APL identifier. Invalid characters are replaced with `⍙<UCS code>⍙` escaping, identical to Dyalog's JSON name mangling (`7159⌶`).
+Converts an arbitrary string to a valid APL identifier. Invalid characters are replaced with `⍙<UCS code>⍙` escaping, identical to Dyalog's JSON name mangling (`0(7162⌶)`).
 
 ```csharp
 static string CommentLines(string? text)
@@ -124,3 +127,27 @@ static string ToDyalogPath(string path)
 ```
 
 Converts an OpenAPI path template (e.g. `/pets/{petId}`) to a Dyalog APL expression (e.g. `'/pets/',(c.∆.HttpCommand.UrlEncode⍕argsNs.petId)`).
+
+## `OperationNaming`
+
+Naming rules shared by code and docs generation.
+
+```csharp
+static string TagOf(OpenApiOperation operation)
+static string TagName(string tag)
+static string FunctionName(string? operationId, string method, string path)
+static List<IOpenApiParameter> MergeParameters(IOpenApiPathItem? pathItem, OpenApiOperation operation)
+static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName)
+```
+
+`TagName` gives the Client field, `_tags` directory and docs file name for a tag; it is always a valid APL name, so is safe as a file name. `MergeParameters` overrides path item parameters with operation parameters of the same name and location. `DescribeJsonBody` gives the argument name, model name and array-ness of a JSON request body, or null if it has no model (it is then passed as `body`).
+
+## `DocsBuilder`
+
+```csharp
+DocsBuilder(OpenApiDocument document)
+List<TagDoc> BuildTags()
+List<ModelDoc> BuildModels(IEnumerable<string>? inlineModelNames = null)
+```
+
+Builds the documentation model for `README.md` and `docs/<tag>.md`, including a usage example for each operation.

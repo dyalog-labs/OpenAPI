@@ -31,6 +31,14 @@ OAuth is not currently supported.
 
 Joins an array query parameter into one value, for parameters the spec declares with `explode: false`. The left argument is the delimiter for the parameter's style (`,` for `form`, a space for `spaceDelimited`, `|` for `pipeDelimited`). A single string or number is passed through as it is.
 
+## `encodeQuery`
+
+URL-encodes the query parameters of a request, held in a namespace, as `name=value` pairs. Parameters whose names are not valid APL are held under their mangled names and are restored to their original names here. A parameter whose value is a vector of strings is repeated, once for each string.
+
+## `formatBody`
+
+Prepares a JSON request body. A [model](models.md) instance, or a vector of them, is converted to a namespace with the model's `FormatNS` method; any other value is returned unchanged.
+
 ## `isValidPathParam`
 
 Validates that a value is usable as a path parameter. A valid path parameter is either a character vector or a scalar number. Generated operation functions call this before substituting values into URL path templates.

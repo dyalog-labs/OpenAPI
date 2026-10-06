@@ -15,6 +15,10 @@ Templates/
 │   ├── HttpCommand.aplc          → APLSource/HttpCommand.aplc  (copied as-is, not a template)
 │   ├── _tags/
 │   │   └── endpoint.aplf.scriban → APLSource/_tags/<tag>/<OperationId>.aplf
+│   └── models/
+│       └── model.aplc.scriban    → APLSource/models/<Model>.aplc
+├── docs/
+│   └── tag.md.scriban            → docs/<tag>.md
 └── README.md.scriban             → README.md
 ```
 
@@ -60,7 +64,7 @@ C# context properties are automatically renamed to `snake_case` before being pas
 
 ### Document-level templates
 
-Used by `Client.aplc.scriban`, `utils.apln.scriban`, `Version.aplf.scriban`, `README.md.scriban`.
+Used by `Client.aplc.scriban`, `utils.apln.scriban`, `Version.aplf.scriban`, `README.md.scriban`, `docs/tag.md.scriban`.
 
 | Property | Description |
 |---|---|
@@ -71,13 +75,18 @@ Used by `Client.aplc.scriban`, `utils.apln.scriban`, `Version.aplf.scriban`, `RE
 | `generated_at` | UTC timestamp of generation |
 | `tags` | List of all tag names used in the spec |
 | `security_schemes` | Map of security scheme name → scheme info (`type`, `in`, `parameter_name`, `scheme`, `bearer_format`) |
-| `schemas` | Map of component schema name → schema info |
+| `has_security_schemes` | Whether there are any security schemes (`.size` does not work on maps in Scriban) |
+| `schemas` | Map of component schema name → schema |
+| `tag_docs` | List of tags, each with `name`, `apl_name`, `display_name`, `description`, `doc_path` and `operations`. Each operation has `function_name`, `method`, `path`, `summary`, `description`, `deprecated`, `parameters`, `request_body`, `responses` and `usage_example` |
+| `models` | List of generated models, each with `class_name` and `description` |
 
 Custom properties (set per-template in `ArtifactGeneratorService`):
 
 | Property | Set for | Description |
 |---|---|---|
-| `class_name` | `Client.aplc` | Generated class name (default: `Client`) |
+| `class_name` | `Client.aplc`, `README.md` | Generated class name (default: `Client`) |
+| `tags` | `Client.aplc` | APL names of the tags, one per Client field |
+| `tag` | `docs/tag.md` | The tag being documented (an item of `tag_docs`) |
 
 ### Endpoint template
 
@@ -94,7 +103,9 @@ Used by `_tags/endpoint.aplf.scriban`.
 | `parameters` | List of parameters, each with `name`, `in`, `required`, `schema` |
 | `request_body` | Request body object, or null |
 | `request_content_type` | Content type of the request body |
-| `request_json_body_type` | Resolved JSON schema type name, or null |
+| `request_json_body_type` | Model class for a JSON body (or its items), or null |
+| `request_body_arg_name` | Field on `argsNs` that holds a JSON body |
+| `request_body_is_array` | Whether a JSON body is an array |
 | `form_fields` | List of form fields for `multipart/form-data` |
 | `responses` | Map of status code → response |
 | `has_security` | Boolean — whether the operation declares security requirements |
@@ -102,7 +113,7 @@ Used by `_tags/endpoint.aplf.scriban`.
 
 ## Custom template functions
 
-Two functions are available in all templates:
+These functions are available in all templates:
 
 **`comment_lines <text>`** — prefixes every line of `text` with `⍝ `.
 
@@ -110,7 +121,11 @@ Two functions are available in all templates:
 {{ comment_lines description }}
 ```
 
-**`get_operations_by_tag`** — returns operations grouped by tag, used in `README.md.scriban`. Returns a dictionary of tag name → list of operation info objects (each with `operation_id`, `method`, `path`, `summary`, `parameters`, `has_request_body`).
+**`apl_name <name>`** — converts `name` to a valid APL identifier, as used for parameters on `argsNs`.
+
+**`one_line <text>`** — collapses `text` onto one line.
+
+**`md_cell <text>`** — makes `text` safe for a Markdown table cell: one line, with `|` escaped.
 
 ## Modifying a template
 

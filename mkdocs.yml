@@ -1,6 +1,6 @@
 site_name: OpenAPI
-repo_url: https://github.com/Dyalog/OpenAPI
-repo_name: Dyalog/OpenAPI
+repo_url: https://github.com/dyalog-labs/OpenAPI
+repo_name: dyalog-labs/OpenAPI
 copyright: Made with <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener"><strong>Material for MkDocs</strong></a><br/>Copyright &copy; 1982-$CURRENT_YEAR <strong><a href="https://dyalog.com" target="_blank" rel="noopener">Dyalog Limited</a></strong> (<a href="#" class="copy" onclick="navigator.clipboard.writeText(innerText);return false" title="Click to copy!">$BUILD_DATE $GIT_INFO</a>).<br/>Except where otherwise noted, content on this site is licensed under a <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener"><strong>Creative Commons Attribution 4.0 International</strong></a> licence.
 
 theme:
@@ -39,6 +39,7 @@ nav:
     - Client Class: generated-client/client.md
     - Utilities: generated-client/utils.md
     - Operation Functions: generated-client/operations.md
+    - Models: generated-client/models.md
     - Using the Client: generated-client/using-the-client.md
     - Error Handling: generated-client/error-handling.md
   - Examples:
