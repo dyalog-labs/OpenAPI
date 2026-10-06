@@ -34,6 +34,8 @@ public class CodeGeneratorService : ICodeGeneratorService
     /// </summary>
     public async Task GenerateAsync(OpenApiDocument document, GeneratorOptions options)
     {
+        // Names that would make one generated file overwrite another stop generation.
+        OperationNaming.CheckFunctionNames(document);
         SchemaHelpers.CheckModelClassNames(document);
 
         await _artifacts.GenerateUtilsAsync(document, options.OutputDirectory);

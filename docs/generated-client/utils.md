@@ -25,7 +25,7 @@ The scheme used is determined by the operation's declared security requirements 
 2. **Bearer token** — added as an `Authorization: Bearer …` header
 3. **Basic auth** — credentials are base64-encoded and added as an `Authorization: Basic …` header
 
-OAuth is not currently supported.
+OAuth is not currently supported. An operation that accepts only unsupported schemes is sent without credentials, which can then be given in `config.headers`. If an operation accepts a supported scheme whose credentials are not configured, `Authenticate` signals an error naming the missing setting.
 
 ## `joinArray`
 
@@ -34,6 +34,10 @@ Joins an array query parameter into one value, for parameters the spec declares 
 ## `encodeQuery`
 
 URL-encodes the query parameters of a request, held in a namespace, as `name=value` pairs. Parameters whose names are not valid APL are held under their mangled names and are restored to their original names here. A parameter whose value is a vector of strings or numbers is repeated, once for each item.
+
+## `toText`
+
+Formats a parameter value for a URL. A character vector is returned as it is; a number is formatted as in JSON, so that a negative number has a `-` (not APL's `¯`) and no precision is lost to `⎕PP`.
 
 ## `formatBody`
 

@@ -33,6 +33,10 @@
         _data←ns
     ∇
 {{~ else ~}}
+{{~ # The JSON names of the declared properties, as an APL vector of names ~}}
+{{~ known = "(" ~}}
+{{~ for prop in properties ~}}{{~ known = known + "(⊂,'" + prop.dyalog_name + "')," ~}}{{~ end ~}}
+{{~ known = known + "⍬)" ~}}
 {{~ for prop in properties ~}}
 {{~ prop_comment = prop.api_name + ": " + prop.type ~}}
 {{~ if prop.member_name != prop.dyalog_name ~}}{{~ prop_comment = prop.api_name + " (property " + prop.member_name + "): " + prop.type ~}}{{~ end ~}}
@@ -97,7 +101,7 @@
         ⍙v←⎕NS ''
     ∇
 
-    ∇ make1 args
+    ∇ make1 args;missing;⍙n
         :Access public
         :Implements constructor
         ⍙v←⎕NS ''
@@ -114,9 +118,14 @@
         :If (args.⎕NC '{{ prop.dyalog_name }}')∊2 9 ⋄ {{ prop.member_name }}←args.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ end ~}}
         {{~ end ~}}
+        {{~ if allows_extra_properties ~}}
+        ⍝ Keep any other properties as given, as the schema allows additional properties
+        ⍙n←(args.⎕NL ¯2 ¯9)~{{ known }}
+        :If 0<≢⍙n ⋄ ⍙v ⎕VSET ⍙n{⍺ ⍵}¨args ⎕VGET ⍙n ⋄ :EndIf
+        {{~ end ~}}
     ∇
 
-    ∇ build←FormatNS;asNS;vec
+    ∇ build←FormatNS;asNS;vec;⍙n
         :Access public
         ⍝ This instance as a namespace, ready for ⎕JSON. Read-only (server-generated) properties are left out.
         asNS←{9.2=⎕NC⊂,'⍵':⍵.FormatNS ⋄ ⍵} ⍝ nested values may be model instances or plain namespaces
@@ -139,9 +148,13 @@
         :EndIf
         {{~ end ~}}
         {{~ end ~}}
+        {{~ if allows_extra_properties ~}}
+        ⍙n←(⍙v.⎕NL ¯2 ¯9)~{{ known }} ⍝ additional properties
+        :If 0<≢⍙n ⋄ build ⎕VSET ⍙n{⍺(asNS ⍵)}¨⍙v ⎕VGET ⍙n ⋄ :EndIf
+        {{~ end ~}}
     ∇
 
-    ∇ inst←FromResponse ns
+    ∇ inst←FromResponse ns;⍙n
         :Access public
         inst←⎕THIS
         {{~ for prop in properties ~}}
@@ -160,6 +173,10 @@
         {{~ else ~}}
         :If 0<ns.⎕NC '{{ prop.dyalog_name }}' ⋄ ⍙v.{{ prop.dyalog_name }}←ns.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ end ~}}
+        {{~ end ~}}
+        {{~ if allows_extra_properties ~}}
+        ⍙n←(ns.⎕NL ¯2 ¯9)~{{ known }} ⍝ additional properties
+        :If 0<≢⍙n ⋄ ⍙v ⎕VSET ⍙n{⍺ ⍵}¨ns ⎕VGET ⍙n ⋄ :EndIf
         {{~ end ~}}
     ∇
 {{~ if has_enums ~}}

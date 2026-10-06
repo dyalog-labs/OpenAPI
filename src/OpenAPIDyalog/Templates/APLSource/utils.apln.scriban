@@ -8,8 +8,8 @@
         ⍝ cArgs is a namespace containing HttpCommand arguments
         ⍝ Returns the HttpCommand response
         cArgs.BaseURL←c.∆.config.baseUrl
-        cArgs.Headers,←'User-Agent' ((' Dyalog OpenAPI Generated Client/',2⊃c.∆.Version),⍨'Dyalog-',1↓∊'/',¨2↑c.∆.HttpCommand.Version)
-        cArgs.Headers,←c.∆.config ⎕VGET ⊂'headers' ⍬
+        cArgs.Headers←(asHeaders cArgs.Headers)⍪asHeaders 'User-Agent' ((' Dyalog OpenAPI Generated Client/',2⊃c.∆.Version),⍨'Dyalog-',1↓∊'/',¨2↑c.∆.HttpCommand.Version)
+        cArgs.Headers⍪←asHeaders c.∆.config ⎕VGET ⊂'headers' ⍬
         cArgs.TranslateData←1
         cArgs.HeaderSubstitution←'env:[' ']' 
         cArgs.Cookies←c.∆.Cookies
@@ -82,7 +82,7 @@
                     ⎕SIGNAL ⊂('EN' 11)('Message' 'Bearer token not configured (config.security.bearerToken)')
                 :EndIf
             :Case 'basic'
-                :If ∨/(⊂'null')≡¨⎕VGET (↑'config.security.'⊂⍛(,¨)'username' 'password') (⊂'null')
+                :If ∨/(⊂'null')≡¨c.∆ ⎕VGET (↑'config.security.'⊂⍛(,¨)'username' 'password') (⊂'null')
                     ⎕SIGNAL ⊂('EN' 11)('Message' 'Username or password not configured (config.security.(username password))')
                 :EndIf
                 authStr←base64 ⎕UCS (c.∆.config.security.username),':',(c.∆.config.security.password)
@@ -91,8 +91,11 @@
                 ⍝ TODO: Implement other HTTP auth schemes (digest, negotiate, etc.)
                 ⎕SIGNAL ⊂('EN' 11)('Message' 'Unsupported HTTP authentication scheme: ',scheme.scheme)
             :EndSelect
+        :ElseIf ∨/schemes.type∊⊂'apikey'
+            ⎕SIGNAL ⊂('EN' 11)('Message' 'API key not configured (config.security.apiKey)')
         :Else
-            ⎕SIGNAL ⊂('EN' 11)('Message' 'No valid/supported security scheme available')
+            ⍝ Only schemes the client does not support (OAuth 2, OpenID Connect, …): send the request
+            ⍝ as it is, so that credentials can be given in config.headers
         :EndIf
 
     ∇
@@ -101,9 +104,25 @@
         ⍝ Serialise an array query parameter sent with explode: false as one value
         ⍝ ⍺: delimiter for the parameter's style (',' form, ' ' spaceDelimited, '|' pipeDelimited)
         ⍝ ⍵: a string, a number, or a vector of strings or numbers
-        0=≡⍵:,⍕⍵
+        0=≡⍵:,toText ⍵
         (1=≡⍵)∧0=10|⎕DR ⍵:⍵
-        (≢⍺)↓∊⍺∘,¨⍕¨⍵
+        (≢⍺)↓∊⍺∘,¨toText¨⍵
+      }
+
+      asHeaders←{
+        ⍝ Headers as a 2-column matrix of names and values, from any of the forms HttpCommand accepts:
+        ⍝ a flat 'name' 'value' 'name' 'value' vector, a vector of name/value pairs, or a matrix
+        0∊⍴⍵:0 2⍴⊂''
+        2=≢⍴⍵:⍵
+        2≥|≡⍵:((≢⍵)÷2)2⍴⍵
+        ↑⍵
+      }
+
+      toText←{
+        ⍝ A parameter value as text for a URL: characters as they are, and a number as in JSON
+        ⍝ (¯0.5 as -0.5, and to full precision rather than ⎕PP digits)
+        0=10|⎕DR ⍵:⍵
+        1 ⎕JSON ⍵
       }
 
       encodeQuery←{
@@ -112,7 +131,7 @@
         ⍝ and restored here. A vector of values (strings or numbers) repeats the name for each item;
         ⍝ a single string or number is one value.
         ns←⍵
-        pair←{(,1(7162⌶)⍺)(,⍕⍵)}
+        pair←{(,1(7162⌶)⍺)(,toText ⍵)}
         single←{(0=≡⍵)∨(1=≡⍵)∧0=10|⎕DR ⍵}
         pairs←⊃,/{v←ns⍎⍵ ⋄ single v:⊂⍵ pair v ⋄ ⍵∘pair¨v}¨ns.⎕NL ¯2
         c.∆.HttpCommand.UrlEncode⊃,/pairs

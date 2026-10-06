@@ -113,6 +113,8 @@ public class ModelGeneratorService
             return context;
         }
 
+        context.AllowsExtraProperties = schema.AdditionalPropertiesAllowed;
+
         // The schema's own properties, then those inherited through allOf (inheritance / extension pattern).
         foreach (var (key, propSchema, required) in SchemaHelpers.Properties(schema, document))
             AddProperty(context, key, propSchema, required, document);

@@ -60,7 +60,14 @@ public class ApiTemplateContext : ITemplateContext
     /// <summary>
     /// Base server URL (first server if available).
     /// </summary>
-    public string? BaseUrl => Servers.FirstOrDefault()?.Url;
+    public string? BaseUrl =>
+        (Servers.FirstOrDefault()
+         ?? Document?.Paths?.Values.SelectMany(p => p.Servers ?? new List<OpenApiServer>()).FirstOrDefault())?.Url;
+
+    /// <summary>
+    /// Whether the base URL is only a path (e.g. "/api/v3"), relative to wherever the spec is served.
+    /// </summary>
+    public bool BaseUrlIsRelative => BaseUrl?.StartsWith('/') == true;
 
     /// <summary>
     /// All security schemes defined in the API, converted to a template-friendly format.
@@ -157,6 +164,13 @@ public class ApiTemplateContext : ITemplateContext
     /// Operations grouped by tag, with usage examples, for README.md and docs/&lt;tag&gt;.md.
     /// </summary>
     public List<TagDoc> TagDocs => _tagDocs ??= new DocsBuilder(Document, InlineSchemas).BuildTags();
+
+    /// <summary>
+    /// The operation the README shows as an example: the first GET, as the simplest to try.
+    /// </summary>
+    public OperationDoc? ExampleOperation =>
+        TagDocs.SelectMany(t => t.Operations).FirstOrDefault(op => op.Method == "GET")
+        ?? TagDocs.SelectMany(t => t.Operations).FirstOrDefault();
 
     /// <summary>
     /// The generated model classes, for README.md.

@@ -77,7 +77,7 @@ public class OperationNamingTests
             }
             """);
 
-        var parameters = OperationNaming.MergeParameters(document.Paths["/pets/{id}"], Operation(document, "/pets/{id}"));
+        var parameters = OperationNaming.MergeParameters("/pets/{id}", document.Paths["/pets/{id}"], Operation(document, "/pets/{id}"));
 
         Assert.Equal(3, parameters.Count);
         Assert.Equal("op", parameters.Single(p => p.Name == "id").Description);

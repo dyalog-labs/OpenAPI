@@ -35,6 +35,12 @@ public class ModelTemplateContext
     public string? MapValueType { get; set; }
 
     /// <summary>
+    /// Whether the schema allows properties beyond those it declares (OpenAPI's default), which a
+    /// model then keeps and sends as given.
+    /// </summary>
+    public bool AllowsExtraProperties { get; set; }
+
+    /// <summary>
     /// Whether any property has enum values (used to conditionally emit shared fields).
     /// </summary>
     public bool HasEnums => Properties.Any(p => p.HasEnumValues);

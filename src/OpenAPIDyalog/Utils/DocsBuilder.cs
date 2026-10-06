@@ -101,7 +101,7 @@ public sealed class DocsBuilder
         var functionName = OperationNaming.FunctionName(operation.OperationId, method, path);
 
         // Cookie parameters are not read by the generated functions, so are not documented.
-        var parameters = OperationNaming.MergeParameters(pathItem, operation)
+        var parameters = OperationNaming.MergeParameters(path, pathItem, operation)
             .Where(p => p.In is ParameterLocation.Path or ParameterLocation.Query or ParameterLocation.Header)
             .ToList();
 
@@ -191,9 +191,13 @@ public sealed class DocsBuilder
                 {
                     var required = schema!.Required?.Contains(key) ?? false;
                     var isBinary = prop.Format == "binary";
-                    example.Add(new ExampleLine(1, !required,
+                    // HttpCommand sends a form field under its APL name, so cannot send one whose name is not valid APL
+                    var sendable = StringHelpers.ToValidAplName(key) == key;
+                    example.Add(new ExampleLine(1, !required || !sendable,
                         $"{StringHelpers.ToValidAplName(key.ToCamelCase())}: {(isBinary ? "'@/path/to/file'" : ExampleValue(prop, forParameter: true))}",
-                        Annotate(isBinary ? "file" : TypeLabel(prop), required, prop, prop.Description)));
+                        sendable
+                            ? Annotate(isBinary ? "file" : TypeLabel(prop), required, prop, prop.Description)
+                            : $"cannot be sent: {key} is not a valid APL name"));
                 }
                 break;
 
@@ -233,12 +237,12 @@ public sealed class DocsBuilder
         {
             var propName    = StringHelpers.ToValidAplName(key);
             var propComment = Annotate(TypeLabel(propSchema), required, propSchema, propSchema.Description);
-            var resolved    = Resolve(propSchema) ?? propSchema;
-            var isModelRef  = SchemaHelpers.IsModelReference(propSchema, _document);
-            var isPropArray = !isModelRef && OperationNaming.IsType(resolved, JsonSchemaType.Array);
-            var target      = isModelRef ? resolved
-                            : isPropArray && Resolve(resolved.Items) is { } items && SchemaHelpers.IsObjectModel(items) ? items
-                            : null;
+            // A union (oneOf/anyOf) is shown as its first alternative.
+            var shape       = Shape(propSchema) ?? propSchema;
+            var isPropArray = OperationNaming.IsType(shape, JsonSchemaType.Array);
+            var target      = isPropArray ? Shape(shape.Items) : shape;
+            if (target != null && !(SchemaHelpers.IsObjectModel(target) && !SchemaHelpers.IsMap(target)))
+                target = null;
 
             if (target != null)
                 AddObject(lines, depth + 1, commented || !required, propName, target, isPropArray, propComment, visiting);
@@ -316,7 +320,7 @@ public sealed class DocsBuilder
     /// </summary>
     private string ExampleValue(IOpenApiSchema? schema, bool forParameter)
     {
-        schema = Resolve(schema);
+        schema = Shape(schema);
         if (schema == null) return "'value'";
 
         var sample = (SchemaHelpers.IsJsonNull(schema.Default) ? null : schema.Default as JsonValue)
@@ -336,7 +340,7 @@ public sealed class DocsBuilder
 
         if (OperationNaming.IsType(schema, JsonSchemaType.Array))
         {
-            var items = Resolve(schema.Items);
+            var items = Shape(schema.Items);
             if (items != null && OperationNaming.IsType(items, JsonSchemaType.String))
                 return forParameter ? "'value1' 'value2'" : ",⊂'value'";
             if (items != null && (OperationNaming.IsType(items, JsonSchemaType.Integer) || OperationNaming.IsType(items, JsonSchemaType.Number)))
@@ -363,10 +367,38 @@ public sealed class DocsBuilder
         if (OperationNaming.IsType(schema, JsonSchemaType.Array))
             return schema.Items != null ? $"array[{TypeLabel(schema.Items)}]" : "array";
 
+        // A union: its alternatives, e.g. "str | array[str]"
+        if (Alternatives(schema) is { Count: > 0 } alternatives)
+        {
+            var labels = alternatives.Select(TypeLabel).Distinct().ToList();
+            return string.Join(" | ", labels.Take(3)) + (labels.Count > 3 ? " | …" : "");
+        }
+
         return SchemaTypeMapper.MapSchemaTypeToAplType(schema);
     }
 
     private IOpenApiSchema? Resolve(IOpenApiSchema? schema) => SchemaHelpers.Resolve(schema, _document);
+
+    /// <summary>
+    /// The alternatives of a union schema (oneOf or anyOf, with no type of its own), less any that are
+    /// only null; or null if the schema is not a union.
+    /// </summary>
+    private List<IOpenApiSchema>? Alternatives(IOpenApiSchema schema)
+    {
+        if (schema.Type != null || schema.Properties is { Count: > 0 }) return null;
+        var alternatives = schema.OneOf is { Count: > 0 } ? schema.OneOf : schema.AnyOf;
+        if (alternatives is not { Count: > 0 }) return null;
+        return alternatives.Where(a => Resolve(a)?.Type != JsonSchemaType.Null).ToList();
+    }
+
+    /// <summary>
+    /// The schema an example is built from: resolved, and for a union, its first alternative.
+    /// </summary>
+    private IOpenApiSchema? Shape(IOpenApiSchema? schema)
+    {
+        schema = Resolve(schema);
+        return schema != null && Alternatives(schema) is [var first, ..] ? Resolve(first) : schema;
+    }
 
     private static string ToDisplayName(string tag) =>
         string.Join(" ", tag.Split(['-', '_', ' '], StringSplitOptions.RemoveEmptyEntries)

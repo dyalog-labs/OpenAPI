@@ -538,4 +538,132 @@ public class GeneratedDocsTests : IDisposable
         Assert.Contains(":field _data", Read(output, "APLSource", "models", "AddThingRequest.aplc"));
         Assert.Contains("argsNs.⎕NC'addThingRequest'", Read(output, "APLSource", "_tags", "thing", "AddThing.aplf"));
     }
+
+    // ── Function name clashes, optional bodies and additional properties ───
+
+    [Fact]
+    public async Task OperationsThatMakeTheSameFunction_StopGeneration()
+    {
+        var spec = Spec.Replace("\"operationId\": \"renamePet\"", "\"operationId\": \"list_pets\"");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => GenerateAsync(spec));
+        Assert.Contains("GET /pets, PATCH /pets/{petId} (all client.pet.ListPets)", ex.Message);
+    }
+
+    [Fact]
+    public async Task OptionalBody_IsOnlySentWhenGiven()
+    {
+        var apl = Read(await GenerateAsync(), "APLSource", "_tags", "pet", "RenamePet.aplf");
+
+        Assert.DoesNotContain("Params: body", apl);
+        Assert.Contains(":If hasBody", apl);
+        Assert.Contains("    clientArgs.Params←body", apl);
+    }
+
+    [Fact]
+    public async Task Model_KeepsAdditionalProperties_UnlessTheSchemaForbidsThem()
+    {
+        var output = await GenerateAsync(Spec.Replace(
+            "\"type\": \"object\", \"description\": \"A pet\"",
+            "\"type\": \"object\", \"description\": \"A pet\", \"additionalProperties\": false"));
+        var pet = Read(output, "APLSource", "models", "Pet.aplc");
+        Assert.DoesNotContain("additional properties", pet);
+
+        var renamed = Read(output, "APLSource", "models", "RenamePetRequest.aplc");
+        Assert.Contains("⍙n←(args.⎕NL ¯2 ¯9)~((⊂,'name'),⍬)", renamed);
+        Assert.Contains("build ⎕VSET", renamed);
+    }
+
+    // ── Faults and quirks found in real specs (OpenAI, Open-Meteo, Petstore) ─
+
+    private const string QuirksSpec = """
+        {
+          "openapi": "3.0.3",
+          "info": { "title": "Quirks", "version": "1.0.0" },
+          "paths": {
+            "/certs/{certificate_id}": {
+              "servers": [{ "url": "/api/v3" }],
+              "get": {
+                "tags": ["certs"], "operationId": "getCert",
+                "parameters": [{ "name": "cert_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+                "responses": { "200": { "description": "OK" } }
+              },
+              "post": {
+                "tags": ["certs"], "operationId": "uploadCert",
+                "security": [{ "oauth": [] }],
+                "requestBody": { "content": { "multipart/form-data": { "schema": {
+                  "type": "object", "properties": { "file": { "type": "string", "format": "binary" },
+                                                    "include[]": { "type": "array", "items": { "type": "string" } } } } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            }
+          },
+          "components": {
+            "securitySchemes": { "oauth": { "type": "oauth2", "flows": { "implicit": {
+              "authorizationUrl": "https://example.com/auth", "scopes": {} } } } }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task PathPlaceholders_AreTheFunctionsPathParameters()
+    {
+        var output = await GenerateAsync(QuirksSpec);
+        var apl  = Read(output, "APLSource", "_tags", "certs", "GetCert.aplf");
+        var page = Read(output, "docs", "certs.md");
+
+        // The undeclared {certificate_id} is required; the misnamed cert_id is ignored
+        Assert.Contains("argsNs.⎕NC'certificate_id'", apl);
+        Assert.DoesNotContain("cert_id'", apl);
+        Assert.Contains("    certificate_id: 'value'", page);
+        Assert.DoesNotContain("`cert_id`", page);
+    }
+
+    [Fact]
+    public async Task MultipartField_ThatIsNotAValidAplName_FailsClearly()
+    {
+        var output = await GenerateAsync(QuirksSpec);
+
+        Assert.Contains("Form field include[] cannot be sent", Read(output, "APLSource", "_tags", "certs", "UploadCert.aplf"));
+        Assert.Contains("cannot be sent: include[] is not a valid APL name", Read(output, "docs", "certs.md"));
+    }
+
+    [Fact]
+    public async Task Readme_UsesAPathLevelServer_AndFlagsARelativeOne()
+    {
+        var readme = Read(await GenerateAsync(QuirksSpec), "README.md");
+
+        Assert.Contains("baseUrl: 'https://your-api-server.com/api/v3'  ⍝ the spec gives only the path", readme);
+        Assert.Contains("response ← client.certs.GetCert args", readme);
+    }
+
+    [Fact]
+    public async Task Readme_ExampleIsTheFirstGet()
+    {
+        var readme = Read(await GenerateAsync(), "README.md");
+
+        Assert.Contains("response ← client.pet.ListPets args", readme);
+    }
+
+    [Fact]
+    public async Task Utils_SendsOnlyUnsupportedSchemesAsIs_AndNumbersAsJson()
+    {
+        var utils = Read(await GenerateAsync(QuirksSpec), "APLSource", "utils.apln");
+
+        Assert.DoesNotContain("No valid/supported security scheme available", utils);
+        Assert.Contains("API key not configured (config.security.apiKey)", utils);
+        Assert.Contains("c.∆ ⎕VGET (↑'config.security.'", utils);
+        Assert.Contains("1 ⎕JSON ⍵", utils);
+        Assert.Contains("argsNs.certificate_id←c.∆.utils.toText argsNs.certificate_id",
+            Read(await GenerateAsync(QuirksSpec), "APLSource", "_tags", "certs", "GetCert.aplf"));
+    }
+
+    [Fact]
+    public async Task Utils_CombinesHeadersFromEverySourceAsAMatrix()
+    {
+        var utils = Read(await GenerateAsync(), "APLSource", "utils.apln");
+
+        Assert.Contains("cArgs.Headers←(asHeaders cArgs.Headers)⍪asHeaders 'User-Agent'", utils);
+        Assert.Contains("cArgs.Headers⍪←asHeaders c.∆.config ⎕VGET ⊂'headers' ⍬", utils);
+    }
 }

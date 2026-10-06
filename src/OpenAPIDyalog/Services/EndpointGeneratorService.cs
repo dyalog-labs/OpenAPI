@@ -116,7 +116,7 @@ public class EndpointGeneratorService
             Summary      = operation.Summary,
             Description  = operation.Description,
             Tags         = operation.Tags?.Select(t => t.Name).Where(n => n != null).Cast<string>().ToList() ?? new(),
-            Parameters   = OperationNaming.MergeParameters(pathItem, operation),
+            Parameters   = OperationNaming.MergeParameters(path, pathItem, operation),
             RequestBody  = operation.RequestBody,
             Responses    = operation.Responses?.ToDictionary(r => r.Key, r => r.Value) ?? new(),
             Deprecated   = operation.Deprecated,

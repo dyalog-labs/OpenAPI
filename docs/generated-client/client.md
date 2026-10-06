@@ -20,14 +20,21 @@ client ← ⎕NEW Client config
 |-------------|---|---|---|
 | `baseUrl`   | Yes | | Root URL prepended to every request path. |
 | `mock`      | No | `¯1` | Controls whether requests are actually sent. See [Mock mode](#mock-mode). |
-| `headers`   | No | `⍬` | Extra headers sent with every request, as a vector of name–value pairs. |
+| `headers`   | No | `⍬` | Extra headers sent with every request: a vector of name–value pairs, such as `('X-One' 'a')('X-Two' 'b')`, or a single pair, or a 2-column matrix. |
 | `security` | No[^1] | | Authentication credentials. See [Authentication](#authentication). |
 
 [^1]: Required if the API uses authentication.
 
 ## Authentication
 
-API key, HTTP bearer, and HTTP basic authentication are supported. OAuth is not currently implemented, but planned to be implemented.
+API key, HTTP bearer, and HTTP basic authentication are supported. OAuth is not currently implemented, but planned to be implemented. An operation that accepts only schemes the client does not support, such as OAuth, is sent without credentials, so you can supply them yourself in `config.headers`:
+
+```apl
+config ← (
+    baseUrl: 'https://api.example.com'
+    headers: ,⊂'Authorization' ('Bearer ',token)
+)
+```
 
 Set a `security` namespace on the config with the fields required by the API's authentication scheme. Only provide the fields relevant to the scheme used.
 

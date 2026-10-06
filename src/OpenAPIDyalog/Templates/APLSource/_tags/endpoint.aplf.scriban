@@ -1,4 +1,4 @@
-response←{{ operation_id }} argsNs;headerParams;queryParams;body;clientArgs;secSchemes
+response←{{ operation_id }} argsNs;headerParams;queryParams;body;hasBody;clientArgs;secSchemes
 ⍝ {{ method | string.upcase }} {{ path }}
 {{~ if summary ~}}
 {{ comment_lines summary }}
@@ -52,6 +52,7 @@ response←{{ operation_id }} argsNs;headerParams;queryParams;body;clientArgs;se
 headerParams←⍬
 queryParams←()
 body←()
+hasBody←0 ⍝ whether there is a request body to send: an optional one may be left out
 
 {{~ # Parameters are read from argsNs under their APL names (apl_name), which differ from
     # the API name only when that is not a valid APL identifier (e.g. X-Trace → ⍙X⍙45⍙Trace). ~}}
@@ -86,7 +87,7 @@ body←()
     ⎕SIGNAL⊂('EN' 11)('Message' 'Invalid parameter: {{ name }} (must be a character vector or scalar number)')
 :EndIf
 :If 2|⎕DR argsNs.{{ name }} ⍝ If numeric, convert to string
-    argsNs.{{ name }}←⍕argsNs.{{ name }}
+    argsNs.{{ name }}←c.∆.utils.toText argsNs.{{ name }}
 :EndIf
 {{~ end ~}}
 {{~ end ~}}
@@ -99,6 +100,7 @@ body←()
 {{~ end ~}}
 :If (0≠argsNs.⎕NC'{{ request_body_arg_name }}')
     body←{{ if request_body_is_array }},{{ end }}c.∆.utils.formatBody argsNs.{{ request_body_arg_name }}{{ if request_body_is_array }} ⍝ a JSON array, even of one item{{ end }}
+    hasBody←1
 :{{ if request_body.required }}Else
     ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ request_body_arg_name }}')
 :{{ end }}EndIf
@@ -107,6 +109,7 @@ body←()
 ⍝ Request body (octet-stream)
 :If (0≠argsNs.⎕NC'body')
     body←argsNs.body
+    hasBody←1
 :{{ if request_body.required }}Else
     ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: body')
 :{{ end }}EndIf
@@ -122,8 +125,15 @@ body←()
 {{~ if field.description ~}}
 {{ comment_lines field.description }}
 {{~ end ~}}
+{{~ if (apl_name field.api_name) == field.api_name ~}}
 :If (0≠argsNs.⎕NC'{{ field.dyalog_name }}')
     body.{{ field.api_name }}←argsNs.{{ field.dyalog_name }}
+    hasBody←1
+{{~ else ~}}
+⍝ HttpCommand sends each form field under its APL name, so cannot send this one
+:If (0≠argsNs.⎕NC'{{ field.dyalog_name }}')
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Form field {{ field.api_name }} cannot be sent, as its name is not a valid APL name')
+{{~ end ~}}
 :{{ if field.is_required }}Else
     ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required form field: {{ field.dyalog_name }}')
 :{{ end }}EndIf
@@ -133,6 +143,7 @@ body←()
 ⍝ Request body ({{ request_content_type }})
 :If (0≠argsNs.⎕NC'data')
     body←argsNs.data
+    hasBody←1
 :{{ if request_body.required }}Else
     ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: data')
 :{{ end }}EndIf
@@ -143,11 +154,13 @@ clientArgs←( ⍝ Basically HttpCommand args in a nutshell
     Command: '{{ method }}'
     URL: ({{ dyalog_path }} ⋄ ())
     Headers: headerParams
-{{~ if request_body ~}}
-    Params: body
-    ContentType: '{{ request_content_type ?? "application/json" }}'
-{{~ end ~}}
 )
+{{~ if request_body ~}}
+:If hasBody ⍝ no body, and no Content-Type, if an optional body was left out
+    clientArgs.Params←body
+    clientArgs.ContentType←'{{ request_content_type ?? "application/json" }}'
+:EndIf
+{{~ end ~}}
 
 {{~ if has_security ~}}
 secSchemes←⍬

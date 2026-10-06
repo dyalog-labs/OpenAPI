@@ -40,11 +40,13 @@ The pages generated in `docs/` give the name to use for each parameter.
 
 ### Path parameters
 
-Path parameters are always required. The value must be a character vector or a scalar number — anything else signals an error. Numeric values are converted to strings automatically, and the value is percent-encoded, so a value containing `/`, `?` or a space stays within its own path segment.
+Path parameters are always required. The value must be a character vector or a scalar number — anything else signals an error. Numbers are written as in JSON (`-0.5`, not `¯0.5`), and the value is percent-encoded, so a value containing `/`, `?` or a space stays within its own path segment.
+
+The path parameters are those named in the path, such as `{petId}` in `/pets/{petId}`. If the spec does not declare one, it is still required, as a string.
 
 ### Query and header parameters
 
-These are read from `argsNs` by name. Required parameters signal an error if absent; optional parameters are simply omitted from the request if not set on the namespace.
+These are read from `argsNs` by name. Required parameters signal an error if absent; optional parameters are simply omitted from the request if not set on the namespace. Numbers in query parameters are written as in JSON, as for path parameters.
 
 An array query parameter that the spec declares with `explode: false` is sent as one value, its items joined by the delimiter for its style: `,` for `form` (the default), a space for `spaceDelimited`, `|` for `pipeDelimited`. Pass a vector of strings or numbers, or a single string:
 
@@ -76,6 +78,8 @@ A JSON body's field depends on its schema:
 | An array of objects defined in the operation itself | `<operationId>RequestItem` | A vector of namespaces or instances of the model generated for them |
 | Anything else defined in the operation itself (a string, an array of strings, …) | `body` | Any value that `⎕JSON` can convert |
 
+An optional request body that is not given is left out of the request altogether, with no `Content-Type` header.
+
 For example, for an operation that takes a `User`:
 
 ```apl
@@ -97,7 +101,9 @@ For `multipart/form-data` operations, each form field in the spec becomes a fiel
 (content) (mime-type) (filename)
 ```
 
-`mime-type` and `filename` are optional. For file uploads, `content` may be a file path prefixed with:
+`mime-type` and `filename` are optional.
+
+HttpCommand sends each form field under its name in the namespace, so a field whose name is not a valid APL name (such as `include[]`) cannot be sent; supplying it signals an error. For the same reason, a form field that is an array cannot be sent as repeated parts. For file uploads, `content` may be a file path prefixed with:
 
 - `@` — upload the file's content and include its original filename in the request
 - `<` — upload only the file's content, omitting the filename

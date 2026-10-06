@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CaseConverter;
 using Microsoft.OpenApi;
 using OpenAPIDyalog.Constants;
@@ -35,18 +36,59 @@ public static class OperationNaming
     }
 
     /// <summary>
+    /// Checks that no two operations map to the same function in the same Client namespace, which
+    /// would make one overwrite the other (e.g. operationIds listPets and list_pets, or tags
+    /// "store orders" and "store-orders"). Throws an exception naming the operations if they do.
+    /// </summary>
+    public static void CheckFunctionNames(OpenApiDocument document)
+    {
+        var clashes = (document.Paths ?? new OpenApiPaths())
+            .SelectMany(path => (path.Value?.Operations ?? new Dictionary<HttpMethod, OpenApiOperation>())
+                .Select(op => (Path: path.Key, Method: op.Key.ToString().ToUpperInvariant(), Operation: op.Value)))
+            .GroupBy(op => $"{TagName(TagOf(op.Operation))}.{FunctionName(op.Operation.OperationId, op.Method, op.Path)}")
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{string.Join(", ", g.Select(op => $"{op.Method} {op.Path}"))} (all client.{g.Key})")
+            .ToList();
+
+        if (clashes.Count > 0)
+            throw new InvalidOperationException(
+                "Some operations would generate the same function: " + string.Join("; ", clashes)
+                + ". Give each a distinct operationId in the specification.");
+    }
+
+    /// <summary>
     /// The parameters that apply to an operation: those declared on the path item, overridden
     /// by any operation-level parameter with the same name and location.
+    /// The path parameters are made to match the {placeholders} in the path, as the generated
+    /// function builds its URL from them: a placeholder that is not declared (a fault in the spec)
+    /// becomes a required string parameter, and a declared path parameter that is not in the
+    /// path is dropped.
     /// </summary>
-    public static List<IOpenApiParameter> MergeParameters(IOpenApiPathItem? pathItem, OpenApiOperation operation)
+    public static List<IOpenApiParameter> MergeParameters(string path, IOpenApiPathItem? pathItem, OpenApiOperation operation)
     {
         var opLevel   = operation.Parameters?.ToList() ?? new List<IOpenApiParameter>();
         var pathLevel = pathItem?.Parameters?.ToList() ?? new List<IOpenApiParameter>();
 
-        return pathLevel
+        var placeholders = Regex.Matches(path, @"\{([^}]+)\}").Select(m => m.Groups[1].Value).ToList();
+        var merged = pathLevel
             .Where(pp => !opLevel.Any(op => op.Name == pp.Name && op.In == pp.In))
             .Concat(opLevel)
+            .Where(p => p.In != ParameterLocation.Path || placeholders.Contains(p.Name ?? string.Empty))
             .ToList();
+
+        foreach (var name in placeholders)
+        {
+            if (!merged.Any(p => p.In == ParameterLocation.Path && p.Name == name))
+                merged.Add(new OpenApiParameter
+                {
+                    Name     = name,
+                    In       = ParameterLocation.Path,
+                    Required = true,
+                    Schema   = new OpenApiSchema { Type = JsonSchemaType.String }
+                });
+        }
+
+        return merged;
     }
 
     /// <summary>
