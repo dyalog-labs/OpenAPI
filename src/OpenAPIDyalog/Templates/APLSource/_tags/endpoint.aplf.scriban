@@ -156,6 +156,9 @@ clientArgs←( ⍝ Basically HttpCommand args in a nutshell
     Headers: headerParams
 )
 {{~ if request_body ~}}
+{{~ if request_body.required ~}}
+hasBody←1 ⍝ a required body is always sent, even if none of its fields were given
+{{~ end ~}}
 :If hasBody ⍝ no body, and no Content-Type, if an optional body was left out
     clientArgs.Params←body
     clientArgs.ContentType←'{{ request_content_type ?? "application/json" }}'

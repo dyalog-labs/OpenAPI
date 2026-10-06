@@ -666,4 +666,24 @@ public class GeneratedDocsTests : IDisposable
         Assert.Contains("cArgs.Headers←(asHeaders cArgs.Headers)⍪asHeaders 'User-Agent'", utils);
         Assert.Contains("cArgs.Headers⍪←asHeaders c.∆.config ⎕VGET ⊂'headers' ⍬", utils);
     }
+
+    [Fact]
+    public async Task RequiredMultipartBody_IsAlwaysSent()
+    {
+        var spec = QuirksSpec.Replace("\"requestBody\": { \"content\": { \"multipart", "\"requestBody\": { \"required\": true, \"content\": { \"multipart");
+        var apl = Read(await GenerateAsync(spec), "APLSource", "_tags", "certs", "UploadCert.aplf");
+
+        Assert.Contains("hasBody←1 ⍝ a required body is always sent", apl);
+    }
+
+    [Fact]
+    public async Task EnumValues_OfDifferentTypesButTheSameText_HaveDistinctNames()
+    {
+        var spec = MembersSpec.Replace("[\"calm\", \"two\\nlines\"]", "[\"1\", 1]");
+        Assert.NotEqual(MembersSpec, spec);
+
+        var thing = Read(await GenerateAsync(spec), "APLSource", "models", "Thing.aplc");
+        Assert.Contains("⍙1: '1'", thing);
+        Assert.Contains("⍙1_2: 1", thing);
+    }
 }

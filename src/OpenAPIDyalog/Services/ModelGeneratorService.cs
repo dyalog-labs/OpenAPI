@@ -190,6 +190,11 @@ public class ModelGeneratorService
             foreach (var group in prop.EnumValues.GroupBy(v => v.AplName).Where(g => g.Count() > 1))
                 foreach (var v in group)
                     v.AplName = StringHelpers.ToValidAplName(v.ApiValue);
+
+            // Values that are the same text but different JSON types ("1" and 1) still clash: number them.
+            foreach (var group in prop.EnumValues.GroupBy(v => v.AplName).Where(g => g.Count() > 1))
+                foreach (var (v, i) in group.Skip(1).Select((v, i) => (v, i)))
+                    v.AplName += $"_{i + 2}";
         }
 
         // A $ref to a component model, or an array of them, holds model instances. A $ref to any
