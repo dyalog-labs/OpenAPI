@@ -8,7 +8,7 @@ Generates Dyalog APL client code from OpenAPI 3.0 specifications.
 
 ## Documentation
 
-Full documentation is available at **[dyalog.github.io/OpenAPI](https://dyalog-labs.github.io/OpenAPI)**, including installation, CLI reference, and a guide to the generated client.
+Full documentation is available at **[dyalog-labs.github.io/OpenAPI](https://dyalog-labs.github.io/OpenAPI)**, including installation, CLI reference, and a guide to the generated client.
 
 ## Quick Start
 
