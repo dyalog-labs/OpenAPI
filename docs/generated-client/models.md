@@ -1,10 +1,14 @@
 # Models
 
-Each schema in the spec's `components` produces a class in `APLSource/models/`. A request body defined within an operation, rather than by reference to a schema, also produces a class, named after the operation: `<OperationId>Request`.
+Each object schema in the spec's `components` produces a class in `APLSource/models/`. A request body defined within an operation, rather than by reference to a schema, also produces a class, named after the operation: `<OperationId>Request`.
 
 ```
 APLSource/models/<Model>.aplc
 ```
+
+A schema that is not an object — an array or a string, say — produces no class. Wherever it is used, its value is used directly: a schema that is an array of `Pet`s is used as a vector of `models.Pet` instances (or namespaces).
+
+A schema that extends others with `allOf` has their properties too, to any depth.
 
 Models are optional. A request body can always be given as a plain namespace, and a response is always available as a namespace in `response.Data`. Models add checking of required fields and enum values when building a request body, and a typed object to read a response into.
 

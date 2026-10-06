@@ -75,10 +75,10 @@ public sealed class DocsBuilder
     /// </summary>
     public List<ModelDoc> BuildModels()
     {
-        var models = (_document.Components?.Schemas ?? new Dictionary<string, IOpenApiSchema>())
+        var models = SchemaHelpers.ModelComponents(_document)
             .Select(kvp => new ModelDoc
             {
-                ClassName   = StringHelpers.ToValidAplName(kvp.Key.ToPascalCase()),
+                ClassName   = SchemaHelpers.ClassNameOf(kvp.Key),
                 Description = kvp.Value.Description
             })
             .ToList();
@@ -87,7 +87,7 @@ public sealed class DocsBuilder
         {
             models.Add(new ModelDoc
             {
-                ClassName   = StringHelpers.ToValidAplName(name.ToPascalCase()),
+                ClassName   = SchemaHelpers.ClassNameOf(name),
                 Description = "Inline request body"
             });
         }
@@ -159,7 +159,7 @@ public sealed class DocsBuilder
         {
             case GeneratorConstants.ContentTypeJson:
             {
-                var body = schema != null ? OperationNaming.DescribeJsonBody(schema, functionName) : null;
+                var body = schema != null ? OperationNaming.DescribeJsonBody(schema, functionName, _document) : null;
                 doc.ArgName   = body?.ArgName ?? OperationNaming.UntypedJsonBodyArgName;
                 doc.ModelName = body?.InlineSchema != null
                     ? InlineModelName(body.InlineSchema) ?? body.ModelName
@@ -169,8 +169,13 @@ public sealed class DocsBuilder
                 var label = doc.ModelName == null
                     ? (schema != null ? TypeLabel(schema) : "any")
                     : doc.IsArray ? $"array[{doc.ModelName}]" : doc.ModelName;
-                var objectSchema = body == null ? null
-                    : body.InlineSchema ?? Resolve(doc.IsArray ? schema!.Items : schema);
+                // The model's fields, for a body that is a model or an array of them.
+                IOpenApiSchema? objectSchema = null;
+                if (doc.ModelName != null)
+                {
+                    var target = body!.InlineSchema ?? Resolve(schema);
+                    objectSchema = body.InlineSchema == null && doc.IsArray ? Resolve(target?.Items) : target;
+                }
 
                 if (objectSchema != null)
                     AddObject(example, 1, false, doc.ArgName, objectSchema, doc.IsArray,
@@ -215,7 +220,7 @@ public sealed class DocsBuilder
         bool isArray, string comment, HashSet<IOpenApiSchema> visiting)
     {
         var open = isArray ? ",⊂(" : "(";
-        var properties = Properties(schema).Where(p => !p.Schema.ReadOnly).ToList();
+        var properties = SchemaHelpers.Properties(schema, _document).Where(p => !p.Schema.ReadOnly).ToList();
 
         if (properties.Count == 0 || depth > MaxNestingDepth || !visiting.Add(schema))
         {
@@ -228,10 +233,14 @@ public sealed class DocsBuilder
         {
             var propName    = StringHelpers.ToValidAplName(key);
             var propComment = Annotate(TypeLabel(propSchema), required, propSchema, propSchema.Description);
-            var isPropArray = OperationNaming.IsType(propSchema, JsonSchemaType.Array);
-            var target      = Resolve(isPropArray ? propSchema.Items : propSchema);
+            var resolved    = Resolve(propSchema) ?? propSchema;
+            var isModelRef  = SchemaHelpers.IsModelReference(propSchema, _document);
+            var isPropArray = !isModelRef && OperationNaming.IsType(resolved, JsonSchemaType.Array);
+            var target      = isModelRef ? resolved
+                            : isPropArray && Resolve(resolved.Items) is { } items && SchemaHelpers.IsObjectModel(items) ? items
+                            : null;
 
-            if (target != null && IsObjectSchema(target) && (propSchema is OpenApiSchemaReference || isPropArray))
+            if (target != null)
                 AddObject(lines, depth + 1, commented || !required, propName, target, isPropArray, propComment, visiting);
             else
                 lines.Add(new ExampleLine(depth + 1, commented || !required,
@@ -333,18 +342,21 @@ public sealed class DocsBuilder
             return "⍬";
         }
 
-        return IsObjectSchema(schema) ? "()" : "⍬";
+        return SchemaHelpers.IsObjectModel(schema) ? "()" : "⍬";
     }
 
     // ── Schema helpers ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// A short type description: a model name for a $ref, array[T] for an array, else str, int, etc.
+    /// A short type description: a model name for a model, array[T] for an array, else str, int, etc.
+    /// A $ref to a component that is not a model is described by that component's schema.
     /// </summary>
-    private static string TypeLabel(IOpenApiSchema schema)
+    private string TypeLabel(IOpenApiSchema schema)
     {
-        if (schema is OpenApiSchemaReference r && !string.IsNullOrEmpty(r.Reference.Id))
-            return StringHelpers.ToValidAplName(r.Reference.Id.ToPascalCase());
+        if (SchemaHelpers.ReferenceId(schema) is { } id)
+            return SchemaHelpers.IsModelReference(schema, _document)
+                ? SchemaHelpers.ClassNameOf(id)
+                : TypeLabel(Resolve(schema) is { } target && target != schema ? target : new OpenApiSchema());
 
         if (OperationNaming.IsType(schema, JsonSchemaType.Array))
             return schema.Items != null ? $"array[{TypeLabel(schema.Items)}]" : "array";
@@ -352,40 +364,7 @@ public sealed class DocsBuilder
         return SchemaTypeMapper.MapSchemaTypeToAplType(schema);
     }
 
-    private IOpenApiSchema? Resolve(IOpenApiSchema? schema)
-    {
-        if (schema is OpenApiSchemaReference r && r.Reference.Id != null
-            && _document.Components?.Schemas?.TryGetValue(r.Reference.Id, out var resolved) == true)
-            return resolved;
-        return schema;
-    }
-
-    private bool IsObjectSchema(IOpenApiSchema schema) =>
-        OperationNaming.IsType(schema, JsonSchemaType.Object)
-        || schema.Properties is { Count: > 0 }
-        || schema.AllOf is { Count: > 0 };
-
-    /// <summary>
-    /// An object schema's properties, including those from allOf sub-schemas, with whether each is
-    /// required (by the schema itself or by the sub-schema that declares it).
-    /// </summary>
-    private List<(string Key, IOpenApiSchema Schema, bool Required)> Properties(IOpenApiSchema schema)
-    {
-        var sources = new List<IOpenApiSchema> { schema };
-        sources.AddRange((schema.AllOf ?? new List<IOpenApiSchema>()).Select(Resolve).OfType<IOpenApiSchema>());
-
-        var required = sources.SelectMany(s => s.Required ?? new HashSet<string>()).ToHashSet();
-        var result = new List<(string, IOpenApiSchema, bool)>();
-        foreach (var source in sources)
-        {
-            foreach (var (key, propSchema) in source.Properties ?? new Dictionary<string, IOpenApiSchema>())
-            {
-                if (result.Any(p => p.Item1 == key)) continue;
-                result.Add((key, propSchema, required.Contains(key)));
-            }
-        }
-        return result;
-    }
+    private IOpenApiSchema? Resolve(IOpenApiSchema? schema) => SchemaHelpers.Resolve(schema, _document);
 
     private static string ToDisplayName(string tag) =>
         string.Join(" ", tag.Split(['-', '_', ' '], StringSplitOptions.RemoveEmptyEntries)

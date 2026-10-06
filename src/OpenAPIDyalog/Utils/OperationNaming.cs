@@ -65,27 +65,42 @@ public static class OperationNaming
     public record JsonBody(string ArgName, string? ModelName, bool IsArray, IOpenApiSchema? InlineSchema);
 
     /// <summary>
-    /// Describes a JSON request body schema that maps to a model: a named model, an inline
-    /// object, or an array of either. Returns null for any other schema, which is passed in
+    /// Describes a JSON request body. A body that is a model (a named or inline object), or an
+    /// array of models, is passed as namespaces or model instances. A $ref is named after the
+    /// component it refers to, which may itself be an array of models, or something else that is
+    /// sent as given. Returns null for any other body, which is passed in
     /// <see cref="UntypedJsonBodyArgName"/> and sent as given.
     /// </summary>
-    public static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName)
+    public static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName, OpenApiDocument? document)
     {
-        if (schema is OpenApiSchemaReference reference && !string.IsNullOrEmpty(reference.Reference.Id))
-            return FromReference(reference.Reference.Id, isArray: false);
+        if (SchemaHelpers.ReferenceId(schema) is { } id)
+        {
+            var target = SchemaHelpers.Resolve(schema, document) ?? schema;
+            if (SchemaHelpers.IsObjectModel(target))
+                return FromReference(id, id, isArray: false);
+
+            var isArray = IsType(target, JsonSchemaType.Array);
+            if (isArray && SchemaHelpers.IsModelReference(target.Items, document))
+                return FromReference(id, SchemaHelpers.ReferenceId(target.Items)!, isArray: true);
+
+            return new(StringHelpers.ToValidAplName(id.ToCamelCase()), null, isArray, null);
+        }
 
         if (IsType(schema, JsonSchemaType.Array))
         {
-            if (schema.Items is OpenApiSchemaReference itemsRef && !string.IsNullOrEmpty(itemsRef.Reference.Id))
-                return FromReference(itemsRef.Reference.Id, isArray: true);
+            if (SchemaHelpers.IsModelReference(schema.Items, document))
+            {
+                var itemsId = SchemaHelpers.ReferenceId(schema.Items)!;
+                return FromReference(itemsId, itemsId, isArray: true);
+            }
 
-            if (schema.Items != null && IsType(schema.Items, JsonSchemaType.Object) && schema.Items.Properties != null)
+            if (schema.Items != null && SchemaHelpers.IsObjectModel(schema.Items))
                 return FromInline($"{functionName}RequestItem", schema.Items, isArray: true);
 
             return null;
         }
 
-        if (IsType(schema, JsonSchemaType.Object) && schema.Properties != null)
+        if (SchemaHelpers.IsObjectModel(schema))
             return FromInline($"{functionName}Request", schema, isArray: false);
 
         return null;
@@ -98,15 +113,15 @@ public static class OperationNaming
     public static bool IsType(IOpenApiSchema schema, JsonSchemaType type) =>
         schema.Type is { } t && (t & ~JsonSchemaType.Null) == type;
 
-    private static JsonBody FromReference(string id, bool isArray) => new(
-        ArgName:      StringHelpers.ToValidAplName(id.ToCamelCase()),
-        ModelName:    StringHelpers.ToValidAplName(id.ToPascalCase()),
+    private static JsonBody FromReference(string argId, string modelId, bool isArray) => new(
+        ArgName:      StringHelpers.ToValidAplName(argId.ToCamelCase()),
+        ModelName:    SchemaHelpers.ClassNameOf(modelId),
         IsArray:      isArray,
         InlineSchema: null);
 
     private static JsonBody FromInline(string syntheticName, IOpenApiSchema schema, bool isArray)
     {
-        var modelName = StringHelpers.ToValidAplName(syntheticName.ToPascalCase());
+        var modelName = SchemaHelpers.ClassNameOf(syntheticName);
         return new(LowerFirst(modelName), modelName, isArray, schema);
     }
 

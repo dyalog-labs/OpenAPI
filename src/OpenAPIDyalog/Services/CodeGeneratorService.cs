@@ -3,6 +3,7 @@ using Microsoft.OpenApi;
 using OpenAPIDyalog.Constants;
 using OpenAPIDyalog.Models;
 using OpenAPIDyalog.Services.Interfaces;
+using OpenAPIDyalog.Utils;
 
 namespace OpenAPIDyalog.Services;
 
@@ -33,6 +34,8 @@ public class CodeGeneratorService : ICodeGeneratorService
     /// </summary>
     public async Task GenerateAsync(OpenApiDocument document, GeneratorOptions options)
     {
+        SchemaHelpers.CheckModelClassNames(document);
+
         await _artifacts.GenerateUtilsAsync(document, options.OutputDirectory);
         await _artifacts.GenerateVersionAsync(document, options.OutputDirectory);
         await _artifacts.CopyHttpCommandAsync(options.OutputDirectory);

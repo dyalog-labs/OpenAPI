@@ -147,11 +147,17 @@ public class ModelProperty
     public bool HasEnumValues => EnumValues?.Count > 0;
 
     /// <summary>
-    /// The shared field name for the enum constants namespace (e.g. "role" → "Role").
-    /// Derived from ApiName (raw JSON key) to stay clean even when DyalogName is mangled.
+    /// The name of the enum constants namespace, after "Enum" (e.g. "role" → "Role").
+    /// Derived from ApiName (raw JSON key) to stay clean even when DyalogName is mangled;
+    /// set to DyalogName where that would make two properties' names the same.
     /// </summary>
-    public string EnumFieldName =>
-        StringHelpers.ToValidAplName(ApiName.ToPascalCase());
+    public string EnumFieldName
+    {
+        get => _enumFieldName ?? StringHelpers.ToValidAplName(ApiName.ToPascalCase());
+        set => _enumFieldName = value;
+    }
+
+    private string? _enumFieldName;
 }
 
 /// <summary>

@@ -41,8 +41,8 @@ public class EndpointGeneratorService
         var operationsByTag = GroupOperationsByTag(document);
 
         // Inline models share the models directory with component models, so must not take their names.
-        var componentModels = (document.Components?.Schemas?.Keys ?? Enumerable.Empty<string>())
-            .Select(ModelGeneratorService.ClassNameOf)
+        var componentModels = SchemaHelpers.ModelComponents(document)
+            .Select(kvp => SchemaHelpers.ClassNameOf(kvp.Key))
             .ToHashSet();
 
         foreach (var tagGroup in operationsByTag)
@@ -56,7 +56,7 @@ public class EndpointGeneratorService
                 var operationId = OperationNaming.FunctionName(operation.OperationId, method, path);
 
                 var context = BuildOperationContext(path, method, operation, pathItem, document, operationId);
-                ResolveRequestBody(operation, operationId, context, inlineSchemas, componentModels);
+                ResolveRequestBody(operation, operationId, document, context, inlineSchemas, componentModels);
 
                 var output     = await _templateService.RenderAsync(template, context);
                 var outputPath = Path.Combine(tagDir, $"{operationId}.aplf");
@@ -127,6 +127,7 @@ public class EndpointGeneratorService
     private static void ResolveRequestBody(
         OpenApiOperation operation,
         string operationId,
+        OpenApiDocument document,
         OperationTemplateContext context,
         Dictionary<string, IOpenApiSchema> inlineSchemas,
         IReadOnlySet<string> componentModels)
@@ -144,7 +145,7 @@ public class EndpointGeneratorService
                 case GeneratorConstants.ContentTypeJson:
                     context.RequestContentType = contentType;
                     if (schema != null)
-                        ResolveJsonBodyType(schema, operationId, context, inlineSchemas, componentModels);
+                        ResolveJsonBodyType(schema, operationId, document, context, inlineSchemas, componentModels);
                     else
                         context.RequestBodyArgName = OperationNaming.UntypedJsonBodyArgName;
                     break;
@@ -172,11 +173,12 @@ public class EndpointGeneratorService
     private static void ResolveJsonBodyType(
         IOpenApiSchema schema,
         string operationId,
+        OpenApiDocument document,
         OperationTemplateContext context,
         Dictionary<string, IOpenApiSchema> inlineSchemas,
         IReadOnlySet<string> componentModels)
     {
-        var body = OperationNaming.DescribeJsonBody(schema, operationId);
+        var body = OperationNaming.DescribeJsonBody(schema, operationId, document);
         if (body == null)
         {
             context.RequestBodyArgName = OperationNaming.UntypedJsonBodyArgName;

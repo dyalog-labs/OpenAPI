@@ -72,7 +72,9 @@ Operations with no tag are placed under the `default` tag.
 
 ### `ModelGeneratorService`
 
-Renders `models/model.aplc.scriban` once per component schema, and once per inline request body schema found by `EndpointGeneratorService` (named `<OperationId>Request`). `allOf` sub-schemas are flattened into one class; a schema with only `additionalProperties` becomes a map type.
+Renders `models/model.aplc.scriban` once per component object schema, and once per inline request body schema found by `EndpointGeneratorService` (named `<OperationId>Request`). Array and primitive schemas get no class; a `$ref` to one is treated as that schema. `allOf` sub-schemas are flattened into one class, to any depth; a schema with only `additionalProperties` becomes a map type.
+
+`CodeGeneratorService` first checks that no two schema names map to the same class name (e.g. `pet` and `Pet`), and stops with an error if they do, as one class would overwrite the other.
 
 ### `TemplateService`
 
@@ -102,6 +104,8 @@ Each template receives a typed context object. The two main ones are:
 **`StringHelpers.ToValidAplName`** — converts an arbitrary string into a valid APL identifier. If the name contains characters outside the APL identifier character set, or begins with a digit, it is prefixed with `⍙` and each invalid character is replaced with `⍙<UCS code>⍙`. This is the same escaping scheme used by Dyalog's JSON name mangling (`0(7162⌶)`), so `⎕JSON` restores the original name. Parameters and model properties whose names are not valid APL are held under these names.
 
 **`OperationNaming`** — the naming rules shared by code and docs generation: a tag's APL name (its Client field, `_tags` directory and docs file name), an operation's function name, the merged parameter list, and the argument name and model for a JSON request body.
+
+**`SchemaHelpers`** — schema rules shared by model, endpoint and docs generation: resolving a `$ref`, whether a schema gets a model class, a schema's properties including those inherited through `allOf`, and the model class name for a schema.
 
 **`DocsBuilder`** — builds the documentation model for the README and tag pages, including a usage example for each operation.
 

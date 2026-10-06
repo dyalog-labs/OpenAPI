@@ -285,4 +285,98 @@ public class GeneratedDocsTests : IDisposable
 
         Assert.Contains("missing←((⊂,'owner'))~args.⎕NL ¯2", model);
     }
+
+    // ── Schemas that are not objects, deep inheritance and name clashes ────
+
+    private const string SchemasSpec = """
+        {
+          "openapi": "3.1.0",
+          "info": { "title": "Schemas", "version": "1.0.0" },
+          "paths": {
+            "/pets": {
+              "post": {
+                "tags": ["pet"], "operationId": "addPets",
+                "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PetList" } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            },
+            "/dogs": {
+              "post": {
+                "tags": ["pet"], "operationId": "addDog",
+                "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Dog" } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Animal": { "type": "object", "required": ["species"], "properties": { "species": { "type": "string" } } },
+              "Pet": {
+                "type": "object", "required": ["name"],
+                "allOf": [{ "$ref": "#/components/schemas/Animal" }],
+                "properties": { "name": { "type": "string" } }
+              },
+              "Dog": {
+                "type": "object",
+                "allOf": [{ "$ref": "#/components/schemas/Pet" }],
+                "properties": {
+                  "foo-bar": { "type": "string", "enum": ["a"] },
+                  "foo_bar": { "type": "string", "enum": ["b"] },
+                  "litter": { "$ref": "#/components/schemas/PetList" }
+                }
+              },
+              "PetList": { "type": "array", "items": { "$ref": "#/components/schemas/Pet" } }
+            }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task ReferenceToAnArrayOfModels_IsUsedAsAVectorOfModels()
+    {
+        var output = await GenerateAsync(SchemasSpec);
+        var page = Read(output, "docs", "pet.md");
+
+        // No class for the array schema itself
+        Assert.False(File.Exists(Path.Combine(output, "APLSource", "models", "PetList.aplc")));
+        Assert.DoesNotContain("PetList", Read(output, "README.md"));
+
+        // As a request body: a vector of Pets, sent as a JSON array
+        Assert.Contains("    petList: ,⊂(", page);
+        Assert.Contains("a vector of namespaces or `models.Pet` instances", page);
+        Assert.Contains("body←,c.∆.utils.formatBody argsNs.petList", Read(output, "APLSource", "_tags", "pet", "AddPets.aplf"));
+
+        // As a property: a vector of Pet instances when read from a response
+        var dog = Read(output, "APLSource", "models", "Dog.aplc");
+        Assert.Contains("build.litter←asNS¨vec litter", dog);
+        Assert.Contains(".##.Pet).FromResponse ⍵}¨ns.litter", dog);
+    }
+
+    [Fact]
+    public async Task InheritedProperties_AreIncludedAtAnyDepth()
+    {
+        var output = await GenerateAsync(SchemasSpec);
+
+        Assert.Contains(":Property species", Read(output, "APLSource", "models", "Dog.aplc"));
+        Assert.Contains("missing←((⊂,'name'),(⊂,'species'))~args.⎕NL ¯2", Read(output, "APLSource", "models", "Dog.aplc"));
+        Assert.Contains("        species: 'value'", Read(output, "docs", "pet.md"));
+    }
+
+    [Fact]
+    public async Task EnumConstants_HaveDistinctNames_WhenPropertyNamesDifferOnlyInPunctuation()
+    {
+        var dog = Read(await GenerateAsync(SchemasSpec), "APLSource", "models", "Dog.aplc");
+
+        Assert.Contains(":field public shared Enum⍙foo⍙45⍙bar", dog);
+        Assert.Contains(":field public shared Enumfoo_bar", dog);
+    }
+
+    [Fact]
+    public async Task SchemaNamesThatMakeTheSameClass_StopGeneration()
+    {
+        var spec = SchemasSpec.Replace("\"Animal\": {", "\"animal\": { \"type\": \"object\" }, \"Animal\": {");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => GenerateAsync(spec));
+        Assert.Contains("animal, Animal", ex.Message);
+    }
 }

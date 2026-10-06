@@ -34,7 +34,7 @@ The structure mirrors the tag and operation layout of the OpenAPI spec:
 - Each **tag** becomes a public field on the `Client` class, holding a namespace of that tag's operations. The field is named after the tag in camelCase: a `user` tag would produce `client.user`, and a `store orders` tag `client.storeOrders`.
 - Each **operation** within a tag becomes a function in that namespace, named after the `operationId`. For example, `listUsers` or `list_users` would produce `client.user.ListUsers`.
 - Operations that have no tag are grouped under a `default` namespace.
-- Each **schema** in the spec's `components` becomes a [model class](models.md) in the `models` namespace.
+- Each object **schema** in the spec's `components` becomes a [model class](models.md) in the `models` namespace.
 
 This means you always call an endpoint as `client.<tag>.<OperationId>`.
 

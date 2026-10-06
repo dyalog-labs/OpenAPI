@@ -87,13 +87,16 @@ public class OperationNamingTests
 
     // ── JSON request bodies ────────────────────────────────────────────────
 
-    private static async Task<IOpenApiSchema> BodySchemaAsync(string schemaJson)
+    private static async Task<(IOpenApiSchema Schema, OpenApiDocument Document)> BodySchemaAsync(string schemaJson)
     {
         var document = await LoadDocumentAsync($$"""
             {
               "openapi": "3.1.0",
               "info": { "title": "Test", "version": "1.0.0" },
-              "components": { "schemas": { "Pet": { "type": "object", "properties": { "name": { "type": "string" } } } } },
+              "components": { "schemas": {
+                "Pet": { "type": "object", "properties": { "name": { "type": "string" } } },
+                "PetList": { "type": "array", "items": { "$ref": "#/components/schemas/Pet" } },
+                "Note": { "type": "string" } } },
               "paths": {
                 "/x": {
                   "post": {
@@ -104,13 +107,19 @@ public class OperationNamingTests
               }
             }
             """);
-        return Operation(document, "/x").RequestBody!.Content!["application/json"].Schema!;
+        return (Operation(document, "/x").RequestBody!.Content!["application/json"].Schema!, document);
+    }
+
+    private static async Task<OperationNaming.JsonBody?> DescribeAsync(string schemaJson, string functionName)
+    {
+        var (schema, document) = await BodySchemaAsync(schemaJson);
+        return OperationNaming.DescribeJsonBody(schema, functionName, document);
     }
 
     [Fact]
     public async Task DescribeJsonBody_Reference_NamedAfterSchema()
     {
-        var body = OperationNaming.DescribeJsonBody(await BodySchemaAsync("""{ "$ref": "#/components/schemas/Pet" }"""), "AddPet");
+        var body = await DescribeAsync("""{ "$ref": "#/components/schemas/Pet" }""", "AddPet");
 
         Assert.NotNull(body);
         Assert.Equal("pet", body.ArgName);
@@ -122,8 +131,7 @@ public class OperationNamingTests
     [Fact]
     public async Task DescribeJsonBody_NullableArrayOfReferences_IsAnArray()
     {
-        var body = OperationNaming.DescribeJsonBody(
-            await BodySchemaAsync("""{ "type": ["array", "null"], "items": { "$ref": "#/components/schemas/Pet" } }"""), "AddPets");
+        var body = await DescribeAsync("""{ "type": ["array", "null"], "items": { "$ref": "#/components/schemas/Pet" } }""", "AddPets");
 
         Assert.NotNull(body);
         Assert.Equal("pet", body.ArgName);
@@ -133,8 +141,7 @@ public class OperationNamingTests
     [Fact]
     public async Task DescribeJsonBody_InlineObject_NamedAfterOperation()
     {
-        var body = OperationNaming.DescribeJsonBody(
-            await BodySchemaAsync("""{ "type": "object", "properties": { "name": { "type": "string" } } }"""), "RenamePet");
+        var body = await DescribeAsync("""{ "type": "object", "properties": { "name": { "type": "string" } } }""", "RenamePet");
 
         Assert.NotNull(body);
         Assert.Equal("renamePetRequest", body.ArgName);
@@ -145,6 +152,28 @@ public class OperationNamingTests
     [Fact]
     public async Task DescribeJsonBody_Primitive_HasNoModel()
     {
-        Assert.Null(OperationNaming.DescribeJsonBody(await BodySchemaAsync("""{ "type": "string" }"""), "Note"));
+        Assert.Null(await DescribeAsync("""{ "type": "string" }""", "Note"));
+    }
+
+    [Fact]
+    public async Task DescribeJsonBody_ReferenceToAnArrayOfModels_IsAnArrayOfTheItemModel()
+    {
+        var body = await DescribeAsync("""{ "$ref": "#/components/schemas/PetList" }""", "AddPets");
+
+        Assert.NotNull(body);
+        Assert.Equal("petList", body.ArgName);
+        Assert.Equal("Pet", body.ModelName);
+        Assert.True(body.IsArray);
+    }
+
+    [Fact]
+    public async Task DescribeJsonBody_ReferenceToAPrimitive_HasNoModel()
+    {
+        var body = await DescribeAsync("""{ "$ref": "#/components/schemas/Note" }""", "AddNote");
+
+        Assert.NotNull(body);
+        Assert.Equal("note", body.ArgName);
+        Assert.Null(body.ModelName);
+        Assert.False(body.IsArray);
     }
 }

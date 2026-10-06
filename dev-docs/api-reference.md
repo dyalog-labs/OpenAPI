@@ -137,10 +137,26 @@ static string TagOf(OpenApiOperation operation)
 static string TagName(string tag)
 static string FunctionName(string? operationId, string method, string path)
 static List<IOpenApiParameter> MergeParameters(IOpenApiPathItem? pathItem, OpenApiOperation operation)
-static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName)
+static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName, OpenApiDocument? document)
 ```
 
-`TagName` gives the Client field, `_tags` directory and docs file name for a tag; it is always a valid APL name, so is safe as a file name. `MergeParameters` overrides path item parameters with operation parameters of the same name and location. `DescribeJsonBody` gives the argument name, model name and array-ness of a JSON request body, or null if it has no model (it is then passed as `body`).
+`TagName` gives the Client field, `_tags` directory and docs file name for a tag; it is always a valid APL name, so is safe as a file name. `MergeParameters` overrides path item parameters with operation parameters of the same name and location. `DescribeJsonBody` gives the argument name, model name and array-ness of a JSON request body. A `$ref` is resolved, so a reference to an array of models is an array; a reference to anything else has no model. For an unnamed body that is not a model or an array of models, it returns null (the body is then passed as `body`).
+
+## `SchemaHelpers`
+
+Schema rules shared by model, endpoint and docs generation.
+
+```csharp
+static IOpenApiSchema? Resolve(IOpenApiSchema? schema, OpenApiDocument? document)
+static bool IsObjectModel(IOpenApiSchema schema)
+static bool IsModelReference(IOpenApiSchema? schema, OpenApiDocument? document)
+static string ClassNameOf(string schemaName)
+static IEnumerable<KeyValuePair<string, IOpenApiSchema>> ModelComponents(OpenApiDocument document)
+static List<(string Key, IOpenApiSchema Schema, bool Required)> Properties(IOpenApiSchema schema, OpenApiDocument? document)
+static void CheckModelClassNames(OpenApiDocument document)
+```
+
+Only object schemas (`ModelComponents`) get a model class. `Properties` includes properties inherited through `allOf` at any depth. `CheckModelClassNames` throws if two schema names map to the same class.
 
 ## `DocsBuilder`
 

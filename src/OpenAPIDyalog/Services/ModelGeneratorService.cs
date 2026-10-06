@@ -24,23 +24,20 @@ public class ModelGeneratorService
     }
 
     /// <summary>
-    /// Generates model files for all schemas defined in document.Components.Schemas.
+    /// Generates a model file for each object schema in document.Components.Schemas. Array and
+    /// primitive schemas get no class: wherever they are used, their values are used directly.
+    /// Call <see cref="SchemaHelpers.CheckModelClassNames"/> first, as clashing names overwrite each other.
     /// </summary>
     public async Task GenerateComponentModelsAsync(OpenApiDocument document, string outputDirectory)
     {
-        var schemas = document.Components?.Schemas;
-        if (schemas == null || schemas.Count == 0)
+        var schemas = SchemaHelpers.ModelComponents(document).ToList();
+        if (schemas.Count == 0)
         {
-            _logger.LogDebug("No component schemas found.");
+            _logger.LogDebug("No component object schemas found.");
             return;
         }
 
         _logger.LogInformation("Generating {Count} component model(s)...", schemas.Count);
-
-        // Schema names that differ only in case or punctuation (pet, Pet, pet_) map to one class.
-        foreach (var clash in schemas.Keys.GroupBy(ClassNameOf).Where(g => g.Count() > 1))
-            _logger.LogWarning("Schemas {Names} all map to model class {ClassName}; only the last is generated.",
-                string.Join(", ", clash), clash.Key);
 
         foreach (var (name, schema) in schemas)
         {
@@ -67,11 +64,6 @@ public class ModelGeneratorService
         }
     }
 
-    /// <summary>
-    /// The model class generated for a schema name.
-    /// </summary>
-    internal static string ClassNameOf(string schemaName) =>
-        StringHelpers.ToValidAplName(schemaName.ToPascalCase());
 
     // ── Core helpers ────────────────────────────────────────────────────────────
 
@@ -98,12 +90,13 @@ public class ModelGeneratorService
     {
         var context = new ModelTemplateContext
         {
-            ClassName   = ClassNameOf(schemaName),
+            ClassName   = SchemaHelpers.ClassNameOf(schemaName),
             Description = schema.Description ?? sourceInfo
         };
 
         // Map type: no named properties, but has additionalProperties.
         if ((schema.Properties == null || schema.Properties.Count == 0)
+            && (schema.AllOf == null || schema.AllOf.Count == 0)
             && schema.AdditionalProperties != null)
         {
             context.IsMapType    = true;
@@ -111,23 +104,15 @@ public class ModelGeneratorService
             return context;
         }
 
-        // The schema's own properties, then those of its allOf sub-schemas (inheritance /
-        // extension pattern). A property is required if the schema or any sub-schema says so.
-        var sources = new List<IOpenApiSchema> { schema };
-        if (schema.AllOf != null)
-            sources.AddRange(schema.AllOf.Select(s => ResolveSchema(s, document)).OfType<IOpenApiSchema>());
+        // The schema's own properties, then those inherited through allOf (inheritance / extension pattern).
+        foreach (var (key, propSchema, required) in SchemaHelpers.Properties(schema, document))
+            AddProperty(context, key, propSchema, required, document);
 
-        var required = sources.SelectMany(s => s.Required ?? new HashSet<string>()).ToHashSet();
-
-        foreach (var source in sources)
-        {
-            foreach (var kvp in source.Properties ?? new Dictionary<string, IOpenApiSchema>())
-            {
-                // Dedup: an earlier source's property wins.
-                if (context.Properties.Any(p => p.ApiName == kvp.Key)) continue;
-                AddProperty(context, kvp.Key, kvp.Value, required.Contains(kvp.Key));
-            }
-        }
+        // Property names that differ only in punctuation (foo-bar, foo_bar) give the same readable
+        // enum constants name; fall back to the mangled property name, which is unique.
+        foreach (var clash in context.EnumProperties.GroupBy(p => p.EnumFieldName).Where(g => g.Count() > 1))
+            foreach (var prop in clash)
+                prop.EnumFieldName = prop.DyalogName;
 
         return context;
     }
@@ -136,7 +121,8 @@ public class ModelGeneratorService
         ModelTemplateContext context,
         string rawKey,
         IOpenApiSchema propSchema,
-        bool isRequired)
+        bool isRequired,
+        OpenApiDocument? document)
     {
         var dyalogName = StringHelpers.ToValidAplName(rawKey);
 
@@ -176,46 +162,35 @@ public class ModelGeneratorService
                     v.AplName = StringHelpers.ToValidAplName(v.ApiValue);
         }
 
-        // Reference detection — direct $ref property.
-        if (propSchema is OpenApiSchemaReference schemaRef)
+        // A $ref to a component model, or an array of them, holds model instances. A $ref to any
+        // other component (an array of models, a string, …) is treated as that component's schema.
+        var schema = propSchema;
+        if (SchemaHelpers.ReferenceId(propSchema) is { } id)
         {
-            var id = schemaRef.Reference.Id;
-            if (!string.IsNullOrEmpty(id))
+            if (SchemaHelpers.IsModelReference(propSchema, document))
             {
-                prop.IsReference  = true;
-                prop.ReferenceType = StringHelpers.ToValidAplName(id.ToPascalCase());
-                // Override the type to show the class name instead of "namespace".
-                prop.Type = StringHelpers.ToValidAplName(id.ToCamelCase());
+                prop.IsReference   = true;
+                prop.ReferenceType = SchemaHelpers.ClassNameOf(id);
+                prop.Type          = prop.ReferenceType;
+            }
+            else
+            {
+                schema = SchemaHelpers.Resolve(propSchema, document) ?? propSchema;
+                prop.IsArray       = OperationNaming.IsType(schema, JsonSchemaType.Array);
+                prop.IsStringArray = prop.IsArray && schema.Items != null
+                    && OperationNaming.IsType(schema.Items, JsonSchemaType.String);
+                prop.Type          = SchemaTypeMapper.MapSchemaTypeToAplType(schema);
             }
         }
-        // Reference detection — array whose items are a $ref.
-        else if (prop.IsArray && propSchema.Items is OpenApiSchemaReference itemsRef)
+
+        if (prop.IsArray && SchemaHelpers.IsModelReference(schema.Items, document))
         {
-            var id = itemsRef.Reference.Id;
-            if (!string.IsNullOrEmpty(id))
-            {
-                prop.IsReference  = true;
-                prop.ReferenceType = StringHelpers.ToValidAplName(id.ToPascalCase());
-                prop.Type = $"array[{StringHelpers.ToValidAplName(id.ToCamelCase())}]";
-            }
+            prop.IsReference   = true;
+            prop.ReferenceType = SchemaHelpers.ClassNameOf(SchemaHelpers.ReferenceId(schema.Items)!);
+            prop.Type          = $"array[{prop.ReferenceType}]";
         }
 
         context.Properties.Add(prop);
-    }
-
-    /// <summary>
-    /// Resolves an allOf entry to a concrete schema, following $ref if present.
-    /// </summary>
-    private static IOpenApiSchema? ResolveSchema(IOpenApiSchema schema, OpenApiDocument? document)
-    {
-        if (schema is OpenApiSchemaReference r
-            && r.Reference.Id != null
-            && document?.Components?.Schemas != null)
-        {
-            document.Components.Schemas.TryGetValue(r.Reference.Id, out var resolved);
-            return resolved;
-        }
-        return schema;
     }
 
     /// <summary>
