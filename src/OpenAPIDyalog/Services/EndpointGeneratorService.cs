@@ -40,6 +40,11 @@ public class EndpointGeneratorService
         var inlineSchemas = new Dictionary<string, IOpenApiSchema>();
         var operationsByTag = GroupOperationsByTag(document);
 
+        // Inline models share the models directory with component models, so must not take their names.
+        var componentModels = (document.Components?.Schemas?.Keys ?? Enumerable.Empty<string>())
+            .Select(ModelGeneratorService.ClassNameOf)
+            .ToHashSet();
+
         foreach (var tagGroup in operationsByTag)
         {
             var tagDirName = OperationNaming.TagName(tagGroup.Key);
@@ -51,7 +56,7 @@ public class EndpointGeneratorService
                 var operationId = OperationNaming.FunctionName(operation.OperationId, method, path);
 
                 var context = BuildOperationContext(path, method, operation, pathItem, document, operationId);
-                ResolveRequestBody(operation, operationId, context, inlineSchemas);
+                ResolveRequestBody(operation, operationId, context, inlineSchemas, componentModels);
 
                 var output     = await _templateService.RenderAsync(template, context);
                 var outputPath = Path.Combine(tagDir, $"{operationId}.aplf");
@@ -123,7 +128,8 @@ public class EndpointGeneratorService
         OpenApiOperation operation,
         string operationId,
         OperationTemplateContext context,
-        Dictionary<string, IOpenApiSchema> inlineSchemas)
+        Dictionary<string, IOpenApiSchema> inlineSchemas,
+        IReadOnlySet<string> componentModels)
     {
         if (operation.RequestBody?.Content == null) return;
 
@@ -138,7 +144,7 @@ public class EndpointGeneratorService
                 case GeneratorConstants.ContentTypeJson:
                     context.RequestContentType = contentType;
                     if (schema != null)
-                        ResolveJsonBodyType(schema, operationId, context, inlineSchemas);
+                        ResolveJsonBodyType(schema, operationId, context, inlineSchemas, componentModels);
                     else
                         context.RequestBodyArgName = OperationNaming.UntypedJsonBodyArgName;
                     break;
@@ -167,7 +173,8 @@ public class EndpointGeneratorService
         IOpenApiSchema schema,
         string operationId,
         OperationTemplateContext context,
-        Dictionary<string, IOpenApiSchema> inlineSchemas)
+        Dictionary<string, IOpenApiSchema> inlineSchemas,
+        IReadOnlySet<string> componentModels)
     {
         var body = OperationNaming.DescribeJsonBody(schema, operationId);
         if (body == null)
@@ -180,13 +187,14 @@ public class EndpointGeneratorService
         context.RequestBodyIsArray  = body.IsArray;
         context.RequestJsonBodyType = body.ModelName;
 
-        // Inline object schemas get a synthesised model class. Two operations with the same
-        // function name would collide, so number any repeats.
+        // Inline object schemas get a synthesised model class. Its name may already be taken, by a
+        // component model or by an operation with the same function name in another tag, so number
+        // any repeats. The docs look the chosen name up from the returned inline schemas.
         if (body.InlineSchema != null)
         {
             var modelName = body.ModelName!;
             var counter   = 2;
-            while (inlineSchemas.ContainsKey(modelName))
+            while (inlineSchemas.ContainsKey(modelName) || componentModels.Contains(modelName))
                 modelName = $"{body.ModelName}{counter++}";
             inlineSchemas[modelName] = body.InlineSchema;
             context.RequestJsonBodyType = modelName;

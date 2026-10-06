@@ -33,7 +33,7 @@ Joins an array query parameter into one value, for parameters the spec declares 
 
 ## `encodeQuery`
 
-URL-encodes the query parameters of a request, held in a namespace, as `name=value` pairs. Parameters whose names are not valid APL are held under their mangled names and are restored to their original names here. A parameter whose value is a vector of strings is repeated, once for each string.
+URL-encodes the query parameters of a request, held in a namespace, as `name=value` pairs. Parameters whose names are not valid APL are held under their mangled names and are restored to their original names here. A parameter whose value is a vector of strings or numbers is repeated, once for each item.
 
 ## `formatBody`
 

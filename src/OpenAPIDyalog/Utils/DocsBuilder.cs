@@ -22,8 +22,16 @@ public sealed class DocsBuilder
     private const int MaxEnumValuesShown = 6;
 
     private readonly OpenApiDocument _document;
+    private readonly IReadOnlyDictionary<string, IOpenApiSchema> _inlineSchemas;
 
-    public DocsBuilder(OpenApiDocument document) => _document = document;
+    /// <param name="document">The API.</param>
+    /// <param name="inlineSchemas">The inline request body schemas found by endpoint generation, keyed by
+    /// the name of the model generated for each (which may be numbered to avoid a clash).</param>
+    public DocsBuilder(OpenApiDocument document, IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
+    {
+        _document      = document;
+        _inlineSchemas = inlineSchemas ?? new Dictionary<string, IOpenApiSchema>();
+    }
 
     /// <summary>
     /// Groups the document's operations by tag, in the order they appear in the spec.
@@ -65,7 +73,7 @@ public sealed class DocsBuilder
     /// Lists the model classes generated from component schemas, then any synthesised for
     /// inline request bodies.
     /// </summary>
-    public List<ModelDoc> BuildModels(IEnumerable<string>? inlineModelNames = null)
+    public List<ModelDoc> BuildModels()
     {
         var models = (_document.Components?.Schemas ?? new Dictionary<string, IOpenApiSchema>())
             .Select(kvp => new ModelDoc
@@ -75,7 +83,7 @@ public sealed class DocsBuilder
             })
             .ToList();
 
-        foreach (var name in inlineModelNames ?? Enumerable.Empty<string>())
+        foreach (var name in _inlineSchemas.Keys)
         {
             models.Add(new ModelDoc
             {
@@ -153,7 +161,9 @@ public sealed class DocsBuilder
             {
                 var body = schema != null ? OperationNaming.DescribeJsonBody(schema, functionName) : null;
                 doc.ArgName   = body?.ArgName ?? OperationNaming.UntypedJsonBodyArgName;
-                doc.ModelName = body?.ModelName;
+                doc.ModelName = body?.InlineSchema != null
+                    ? InlineModelName(body.InlineSchema) ?? body.ModelName
+                    : body?.ModelName;
                 doc.IsArray   = body?.IsArray ?? false;
 
                 var label = doc.ModelName == null
@@ -231,6 +241,14 @@ public sealed class DocsBuilder
 
         visiting.Remove(schema);
     }
+
+    /// <summary>
+    /// The name endpoint generation gave the model for an inline schema.
+    /// </summary>
+    private string? InlineModelName(IOpenApiSchema schema) =>
+        _inlineSchemas.FirstOrDefault(kvp => ReferenceEquals(kvp.Value, schema)).Key is { } name
+            ? StringHelpers.ToValidAplName(name.ToPascalCase())
+            : null;
 
     // ── Example rendering ────────────────────────────────────────────────────
 

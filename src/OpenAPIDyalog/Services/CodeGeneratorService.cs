@@ -42,11 +42,11 @@ public class CodeGeneratorService : ICodeGeneratorService
             document, options.OutputDirectory, options.Namespace);
 
         await _artifacts.GenerateClientAsync(document, options.OutputDirectory, options.Namespace);
-        await _artifacts.GenerateReadmeAsync(document, options.OutputDirectory, inlineSchemas.Keys);
-        await _artifacts.GenerateTagDocsAsync(document, options.OutputDirectory);
+        await _artifacts.GenerateReadmeAsync(document, options.OutputDirectory, inlineSchemas);
+        await _artifacts.GenerateTagDocsAsync(document, options.OutputDirectory, inlineSchemas);
 
         // Model generation
-        await _models.GenerateInlineSchemaModelsAsync(inlineSchemas, options.OutputDirectory);
+        await _models.GenerateInlineSchemaModelsAsync(inlineSchemas, document, options.OutputDirectory);
         await _models.GenerateComponentModelsAsync(document, options.OutputDirectory);
     }
 

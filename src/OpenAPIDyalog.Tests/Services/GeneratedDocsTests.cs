@@ -85,12 +85,12 @@ public class GeneratedDocsTests : IDisposable
         }
         """;
 
-    private async Task<string> GenerateAsync()
+    private async Task<string> GenerateAsync(string spec = Spec)
     {
         var specPath = Path.Combine(_tempDir, "spec.json");
-        await File.WriteAllTextAsync(specPath, Spec);
+        await File.WriteAllTextAsync(specPath, spec);
 
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(Spec));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(spec));
         var (document, _) = await OpenApiDocument.LoadAsync(stream, settings: new OpenApiReaderSettings());
 
         var templates = new TemplateService(NullLogger<TemplateService>.Instance);
@@ -225,5 +225,64 @@ public class GeneratedDocsTests : IDisposable
         Assert.DoesNotContain("_id", formatNS);
         Assert.Contains("build.scores←vec scores", formatNS);
         Assert.Contains("build.friends←asNS¨vec friends", formatNS);
+    }
+
+    // ── Inline models ──────────────────────────────────────────────────────
+
+    private const string InlineSpec = """
+        {
+          "openapi": "3.1.0",
+          "info": { "title": "Inline", "version": "1.0.0" },
+          "paths": {
+            "/pets": {
+              "post": {
+                "tags": ["pet"], "operationId": "addPet",
+                "requestBody": { "content": { "application/json": { "schema": {
+                  "type": "object", "required": ["name"],
+                  "allOf": [{ "$ref": "#/components/schemas/Base" }],
+                  "properties": { "name": { "type": "string" } } } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Base": { "type": "object", "properties": { "id": { "type": "string" }, "owner": { "type": "string" } } },
+              "AddPetRequest": { "type": "object", "properties": { "other": { "type": "string" } } },
+              "Dog": {
+                "type": "object", "required": ["owner"],
+                "allOf": [{ "$ref": "#/components/schemas/Base" }],
+                "properties": { "bark": { "type": "string" } }
+              }
+            }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task InlineModel_DoesNotOverwriteAComponentModel_AndTheDocsUseItsName()
+    {
+        var output = await GenerateAsync(InlineSpec);
+
+        Assert.Contains("other", Read(output, "APLSource", "models", "AddPetRequest.aplc"));
+        Assert.Contains("name", Read(output, "APLSource", "models", "AddPetRequest2.aplc"));
+        Assert.Contains("models.AddPetRequest2", Read(output, "docs", "pet.md"));
+        Assert.Contains("| `AddPetRequest2` |", Read(output, "README.md"));
+    }
+
+    [Fact]
+    public async Task InlineModel_IncludesPropertiesInheritedFromComponents()
+    {
+        var model = Read(await GenerateAsync(InlineSpec), "APLSource", "models", "AddPetRequest2.aplc");
+
+        Assert.Contains(":Property owner", model);
+    }
+
+    [Fact]
+    public async Task Model_InheritedPropertyIsRequired_WhenTheOuterSchemaSaysSo()
+    {
+        var model = Read(await GenerateAsync(InlineSpec), "APLSource", "models", "Dog.aplc");
+
+        Assert.Contains("missing←((⊂,'owner'))~args.⎕NL ¯2", model);
     }
 }

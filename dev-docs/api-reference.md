@@ -52,8 +52,8 @@ Task GenerateVersionAsync(OpenApiDocument document, string outputDirectory)
 Task CopyHttpCommandAsync(string outputDirectory)
 Task CopySpecificationAsync(string specificationPath, string outputDirectory)
 Task GenerateClientAsync(OpenApiDocument document, string outputDirectory)
-Task GenerateReadmeAsync(OpenApiDocument document, string outputDirectory, IEnumerable<string>? inlineModelNames = null)
-Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory)
+Task GenerateReadmeAsync(OpenApiDocument document, string outputDirectory, IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
+Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory, IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
 ```
 
 `GenerateTagDocsAsync` writes `docs/<tag>.md` for each tag, named by the tag's APL name.
@@ -77,7 +77,7 @@ Generates one model class per schema, in `APLSource/models/`.
 
 ```csharp
 Task GenerateComponentModelsAsync(OpenApiDocument document, string outputDirectory)
-Task GenerateInlineSchemaModelsAsync(IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, string outputDirectory)
+Task GenerateInlineSchemaModelsAsync(IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, OpenApiDocument document, string outputDirectory)
 ```
 
 ## `TemplateService`
@@ -145,9 +145,9 @@ static JsonBody? DescribeJsonBody(IOpenApiSchema schema, string functionName)
 ## `DocsBuilder`
 
 ```csharp
-DocsBuilder(OpenApiDocument document)
+DocsBuilder(OpenApiDocument document, IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
 List<TagDoc> BuildTags()
-List<ModelDoc> BuildModels(IEnumerable<string>? inlineModelNames = null)
+List<ModelDoc> BuildModels()
 ```
 
-Builds the documentation model for `README.md` and `docs/<tag>.md`, including a usage example for each operation.
+Builds the documentation model for `README.md` and `docs/<tag>.md`, including a usage example for each operation. `inlineSchemas` is what `EndpointGeneratorService.GenerateEndpointsAsync` returns, so the docs name each inline model as it was generated (an inline model is numbered if its name is taken).

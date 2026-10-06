@@ -145,22 +145,23 @@ public class ApiTemplateContext : ITemplateContext
     }
 
     /// <summary>
-    /// Names of the models synthesised for inline request bodies, listed in the README
-    /// after the component models.
+    /// The inline request body schemas found by endpoint generation, keyed by the name of the
+    /// model generated for each.
     /// </summary>
-    public IEnumerable<string> InlineModelNames { get; set; } = Enumerable.Empty<string>();
+    public IReadOnlyDictionary<string, IOpenApiSchema> InlineSchemas { get; set; } =
+        new Dictionary<string, IOpenApiSchema>();
 
     private List<TagDoc>? _tagDocs;
 
     /// <summary>
     /// Operations grouped by tag, with usage examples, for README.md and docs/&lt;tag&gt;.md.
     /// </summary>
-    public List<TagDoc> TagDocs => _tagDocs ??= new DocsBuilder(Document).BuildTags();
+    public List<TagDoc> TagDocs => _tagDocs ??= new DocsBuilder(Document, InlineSchemas).BuildTags();
 
     /// <summary>
     /// The generated model classes, for README.md.
     /// </summary>
-    public List<ModelDoc> Models => new DocsBuilder(Document).BuildModels(InlineModelNames);
+    public List<ModelDoc> Models => new DocsBuilder(Document, InlineSchemas).BuildModels();
 
     /// <summary>
     /// Helper class for security scheme information in templates.

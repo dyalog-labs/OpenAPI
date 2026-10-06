@@ -145,7 +145,8 @@ public class ArtifactGeneratorService
     /// </summary>
     /// <exception cref="Exception">Re-thrown after logging if generation fails.</exception>
     public async Task GenerateReadmeAsync(
-        OpenApiDocument document, string outputDirectory, IEnumerable<string>? inlineModelNames = null)
+        OpenApiDocument document, string outputDirectory,
+        IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
     {
         try
         {
@@ -154,7 +155,7 @@ public class ArtifactGeneratorService
             {
                 Document         = document,
                 GeneratedAt      = DateTime.UtcNow,
-                InlineModelNames = inlineModelNames ?? Enumerable.Empty<string>()
+                InlineSchemas    = inlineSchemas ?? new Dictionary<string, IOpenApiSchema>()
             };
             context.CustomProperties["class_name"] = GeneratorConstants.DefaultClientClass;
 
@@ -175,10 +176,17 @@ public class ArtifactGeneratorService
     /// Generates docs/&lt;tag&gt;.md for each tag, named by the tag's APL name (as used for
     /// client.&lt;tag&gt;), which is always a safe file name.
     /// </summary>
-    public async Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory)
+    public async Task GenerateTagDocsAsync(
+        OpenApiDocument document, string outputDirectory,
+        IReadOnlyDictionary<string, IOpenApiSchema>? inlineSchemas = null)
     {
         var template = await _templateService.LoadTemplateAsync(GeneratorConstants.TagDocTemplate);
-        var context  = new ApiTemplateContext { Document = document, GeneratedAt = DateTime.UtcNow };
+        var context  = new ApiTemplateContext
+        {
+            Document      = document,
+            GeneratedAt   = DateTime.UtcNow,
+            InlineSchemas = inlineSchemas ?? new Dictionary<string, IOpenApiSchema>()
+        };
 
         foreach (var tag in context.TagDocs)
         {

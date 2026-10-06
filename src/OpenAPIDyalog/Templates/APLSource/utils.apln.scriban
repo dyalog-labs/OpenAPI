@@ -109,10 +109,12 @@
       encodeQuery←{
         ⍝ URL-encode a namespace of query parameters as name=value pairs joined by &
         ⍝ A name that is not valid APL is held in its mangled form (page[size] as ⍙page⍙91⍙size⍙93⍙)
-        ⍝ and restored here. A nested value (a vector of strings, say) repeats the name for each item.
+        ⍝ and restored here. A vector of values (strings or numbers) repeats the name for each item;
+        ⍝ a single string or number is one value.
         ns←⍵
         pair←{(,1(7162⌶)⍺)(,⍕⍵)}
-        pairs←⊃,/{v←ns⍎⍵ ⋄ 1≥|≡v:⊂⍵ pair v ⋄ ⍵∘pair¨v}¨ns.⎕NL ¯2
+        single←{(0=≡⍵)∨(1=≡⍵)∧0=10|⎕DR ⍵}
+        pairs←⊃,/{v←ns⍎⍵ ⋄ single v:⊂⍵ pair v ⋄ ⍵∘pair¨v}¨ns.⎕NL ¯2
         c.∆.HttpCommand.UrlEncode⊃,/pairs
       }
 

@@ -62,7 +62,7 @@ and returns an [HttpCommand response](https://dyalog.github.io/HttpCommand/lates
 {{~ end ~}}
 {{~ else if body.content_type == "multipart/form-data" ~}}
 One argument per form field, sent as `multipart/form-data`. To upload a file, give its
-path prefixed with `@`; see [Multipart form fields](https://dyalog.github.io/OpenAPI/generated-client/operations/#multipart-form-fields).
+path prefixed with `@`; see [Multipart form fields](https://dyalog-labs.github.io/OpenAPI/generated-client/operations/#multipart-form-fields).
 {{~ else ~}}
 `{{ body.arg_name }}`{{ if !body.required }} (optional){{ end }}: a character vector, sent as `{{ body.content_type }}`.
 {{~ end ~}}

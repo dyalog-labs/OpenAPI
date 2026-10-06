@@ -37,6 +37,11 @@ public class ModelGeneratorService
 
         _logger.LogInformation("Generating {Count} component model(s)...", schemas.Count);
 
+        // Schema names that differ only in case or punctuation (pet, Pet, pet_) map to one class.
+        foreach (var clash in schemas.Keys.GroupBy(ClassNameOf).Where(g => g.Count() > 1))
+            _logger.LogWarning("Schemas {Names} all map to model class {ClassName}; only the last is generated.",
+                string.Join(", ", clash), clash.Key);
+
         foreach (var (name, schema) in schemas)
         {
             var context = CreateModelContext(name, schema, document);
@@ -48,7 +53,7 @@ public class ModelGeneratorService
     /// Generates model files for inline schemas discovered during endpoint generation.
     /// </summary>
     public async Task GenerateInlineSchemaModelsAsync(
-        IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, string outputDirectory)
+        IReadOnlyDictionary<string, IOpenApiSchema> inlineSchemas, OpenApiDocument document, string outputDirectory)
     {
         if (inlineSchemas.Count == 0) return;
 
@@ -56,11 +61,17 @@ public class ModelGeneratorService
 
         foreach (var (name, schema) in inlineSchemas)
         {
-            // Inline schemas have no document context for $ref resolution, so pass null.
-            var context = CreateModelContext(name, schema, document: null);
+            // The document resolves any allOf references to component schemas.
+            var context = CreateModelContext(name, schema, document);
             await GenerateModelAsync(context, outputDirectory);
         }
     }
+
+    /// <summary>
+    /// The model class generated for a schema name.
+    /// </summary>
+    internal static string ClassNameOf(string schemaName) =>
+        StringHelpers.ToValidAplName(schemaName.ToPascalCase());
 
     // ── Core helpers ────────────────────────────────────────────────────────────
 
@@ -87,7 +98,7 @@ public class ModelGeneratorService
     {
         var context = new ModelTemplateContext
         {
-            ClassName   = StringHelpers.ToValidAplName(schemaName.ToPascalCase()),
+            ClassName   = ClassNameOf(schemaName),
             Description = schema.Description ?? sourceInfo
         };
 
@@ -100,27 +111,21 @@ public class ModelGeneratorService
             return context;
         }
 
-        // Collect properties from the schema itself.
-        if (schema.Properties != null)
-        {
-            foreach (var kvp in schema.Properties)
-                AddProperty(context, kvp.Key, kvp.Value, schema);
-        }
-
-        // Flatten allOf sub-schemas (inheritance / extension pattern).
+        // The schema's own properties, then those of its allOf sub-schemas (inheritance /
+        // extension pattern). A property is required if the schema or any sub-schema says so.
+        var sources = new List<IOpenApiSchema> { schema };
         if (schema.AllOf != null)
-        {
-            foreach (var allOfEntry in schema.AllOf)
-            {
-                var subSchema = ResolveSchema(allOfEntry, document);
-                if (subSchema?.Properties == null) continue;
+            sources.AddRange(schema.AllOf.Select(s => ResolveSchema(s, document)).OfType<IOpenApiSchema>());
 
-                foreach (var kvp in subSchema.Properties)
-                {
-                    // Dedup: skip if already added from the primary schema.
-                    if (context.Properties.Any(p => p.ApiName == kvp.Key)) continue;
-                    AddProperty(context, kvp.Key, kvp.Value, subSchema);
-                }
+        var required = sources.SelectMany(s => s.Required ?? new HashSet<string>()).ToHashSet();
+
+        foreach (var source in sources)
+        {
+            foreach (var kvp in source.Properties ?? new Dictionary<string, IOpenApiSchema>())
+            {
+                // Dedup: an earlier source's property wins.
+                if (context.Properties.Any(p => p.ApiName == kvp.Key)) continue;
+                AddProperty(context, kvp.Key, kvp.Value, required.Contains(kvp.Key));
             }
         }
 
@@ -131,7 +136,7 @@ public class ModelGeneratorService
         ModelTemplateContext context,
         string rawKey,
         IOpenApiSchema propSchema,
-        IOpenApiSchema parentSchema)
+        bool isRequired)
     {
         var dyalogName = StringHelpers.ToValidAplName(rawKey);
 
@@ -140,7 +145,7 @@ public class ModelGeneratorService
             ApiName    = rawKey,
             DyalogName = dyalogName,
             Type       = SchemaTypeMapper.MapSchemaTypeToAplType(propSchema),
-            IsRequired = parentSchema.Required?.Contains(rawKey) ?? false,
+            IsRequired = isRequired,
             IsNullable = SchemaTypeMapper.IsNullable(propSchema),
             IsReadOnly = propSchema.ReadOnly,
             IsWriteOnly = propSchema.WriteOnly,
