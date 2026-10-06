@@ -105,6 +105,25 @@ public static class StringHelpers
     }
 
     /// <summary>
+    /// Quotes a string as an APL character vector literal, doubling any embedded quotes.
+    /// </summary>
+    public static string ToAplString(string text) => "'" + text.Replace("'", "''") + "'";
+
+    /// <summary>
+    /// Collapses a possibly multi-line string onto a single line, for use in a one-line
+    /// comment or a Markdown table cell.
+    /// </summary>
+    public static string ToSingleLine(string? text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? string.Empty
+            : string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>
+    /// Makes a string safe for a Markdown table cell: one line, with pipes escaped.
+    /// </summary>
+    public static string ToTableCell(string? text) => ToSingleLine(text).Replace("|", "\\|");
+
+    /// <summary>
     /// Prefixes each line of a multiline string with the APL lamp symbol (⍝).
     /// </summary>
     /// <param name="text">The text to comment.</param>

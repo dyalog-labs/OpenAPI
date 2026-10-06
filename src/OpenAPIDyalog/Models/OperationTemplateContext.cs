@@ -58,9 +58,19 @@ public class OperationTemplateContext
     public string? RequestContentType { get; set; }
 
     /// <summary>
-    /// The name of the model for the JSON request body, if any.
+    /// The model class for the JSON request body (or its items, for an array body), if any.
     /// </summary>
     public string? RequestJsonBodyType { get; set; }
+
+    /// <summary>
+    /// The field on argsNs that holds the JSON request body.
+    /// </summary>
+    public string? RequestBodyArgName { get; set; }
+
+    /// <summary>
+    /// Whether the JSON request body is an array.
+    /// </summary>
+    public bool RequestBodyIsArray { get; set; }
 
     /// <summary>
     /// Responses for this operation.

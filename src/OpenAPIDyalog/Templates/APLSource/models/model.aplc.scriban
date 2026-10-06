@@ -10,6 +10,12 @@
 
     :field _data
 
+    ∇ make0
+        :Access public
+        :Implements constructor
+        _data←⎕NS ''
+    ∇
+
     ∇ make1 args
         :Access public
         :Implements constructor
@@ -19,6 +25,12 @@
     ∇ build←FormatNS
         :Access public
         build←_data
+    ∇
+
+    ∇ inst←FromResponse ns
+        :Access public
+        inst←⎕THIS
+        _data←ns
     ∇
 {{~ else ~}}
 {{~ for prop in properties ~}}
@@ -63,8 +75,8 @@
     {{~ if !prop.is_read_only ~}}
         ∇ Set args
         {{~ if prop.has_enum_values ~}}
-            :If ~args.NewValue⊂⍛∊⊃¨↓¯1↑[2]↑(⎕VGET∘¯2)Enum{{ prop.enum_field_name }}
-                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.dyalog_name }} must be one of:',⊃¨↓¯1↑[2]↑(⎕VGET∘¯2)Enum{{ prop.enum_field_name }}))
+            :If ~(⊂args.NewValue)∊Enum{{ prop.enum_field_name }}.(⍎¨⎕NL ¯2)
+                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.dyalog_name }} must be one of: {{ for v in prop.enum_values }}{{ v.api_value | string.replace "'" "''" }}{{ if !for.last }}, {{ end }}{{ end }}'))
             :EndIf
         {{~ end ~}}
             _{{ prop.dyalog_name }}←args.NewValue
@@ -83,9 +95,9 @@
         :Implements constructor
         {{~ if has_writable_required_fields ~}}
         ⍝ Validate required fields (readOnly fields are server-generated, not required from caller)
-        missing←{{ for f in writable_required_fields }}'{{ f }}'{{ if !for.last }} {{ end }}{{ end }}~args.⎕NL ¯2
-        :If 0<⍴missing
-            ⎕SIGNAL ⊂('EN' 11)('Message'('Missing required fields: ',1↓∊(⊂', '),¨missing))
+        missing←({{ for f in writable_required_fields }}(⊂,'{{ f }}'){{ if !for.last }},{{ end }}{{ end }})~args.⎕NL ¯2
+        :If 0<≢missing
+            ⎕SIGNAL ⊂('EN' 11)('Message'('Missing required fields: ',2↓∊(⊂', '),¨missing))
         :EndIf
         {{~ end ~}}
         ⍝ Set properties through their setters
@@ -96,25 +108,28 @@
         {{~ end ~}}
     ∇
 
-    ∇ build←FormatNS
+    ∇ build←FormatNS;asNS;vec
         :Access public
+        ⍝ This instance as a namespace, ready for ⎕JSON. Read-only (server-generated) properties are left out.
+        asNS←{9.2=⎕NC⊂,'⍵':⍵.FormatNS ⋄ ⍵} ⍝ nested values may be model instances or plain namespaces
+        vec←{(⊂'null')≡⍵:⍵ ⋄ 1∘/⍵}          ⍝ arrays are vectors, even of one item; JSON null stays null
         build←⎕NS ''
         {{~ for prop in properties ~}}
+        {{~ if !prop.is_read_only ~}}
         :If 2=⎕NC '_{{ prop.dyalog_name }}'
             {{~ if prop.is_reference && prop.is_array ~}}
-            :If 0∊⍴{{ prop.dyalog_name }}
-                build.{{ prop.dyalog_name }}←⍬
-            :Else
-                build.{{ prop.dyalog_name }}←1∘/{{ prop.dyalog_name }}.FormatNS
-            :EndIf
+            build.{{ prop.dyalog_name }}←asNS¨vec {{ prop.dyalog_name }}
             {{~ else if prop.is_reference ~}}
-            build.{{ prop.dyalog_name }}←{{ prop.dyalog_name }}.FormatNS
+            build.{{ prop.dyalog_name }}←asNS {{ prop.dyalog_name }}
+            {{~ else if prop.is_string_array ~}}
+            build.{{ prop.dyalog_name }}←vec⊆{{ prop.dyalog_name }}
             {{~ else if prop.is_array ~}}
-            build.{{ prop.dyalog_name }}←1∘/⊆{{ prop.dyalog_name }}
+            build.{{ prop.dyalog_name }}←vec {{ prop.dyalog_name }}
             {{~ else ~}}
             build.{{ prop.dyalog_name }}←{{ prop.dyalog_name }}
             {{~ end ~}}
         :EndIf
+        {{~ end ~}}
         {{~ end ~}}
     ∇
 
@@ -124,7 +139,9 @@
         {{~ for prop in properties ~}}
         {{~ if prop.is_reference && prop.is_array ~}}
         :If 2=ns.⎕NC '{{ prop.dyalog_name }}'
-            :If 0∊⍴ns.{{ prop.dyalog_name }}
+            :If (⊂'null')≡ns.{{ prop.dyalog_name }} ⍝ JSON null
+                inst._{{ prop.dyalog_name }}←⊂'null'
+            :ElseIf 0∊⍴ns.{{ prop.dyalog_name }}
                 inst._{{ prop.dyalog_name }}←⍬
             :Else
                 inst._{{ prop.dyalog_name }}←{(⎕NEW (⊃⊃⎕CLASS ⎕THIS).##.{{ prop.reference_type }}).FromResponse ⍵}¨ns.{{ prop.dyalog_name }}
@@ -143,7 +160,7 @@
     {{~ for prop in enum_properties ~}}
     Enum{{ prop.enum_field_name }}←(
     {{~ for v in prop.enum_values ~}}
-        {{ v.apl_name }}: '{{ v.api_value }}'
+        {{ v.apl_name }}: {{ v.apl_literal }}
     {{~ end ~}}
     )
     {{~ end ~}}

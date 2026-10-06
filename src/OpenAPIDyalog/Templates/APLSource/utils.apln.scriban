@@ -65,7 +65,7 @@
             :Case 'header'
                 cArgs.Headers,←scheme.name c.∆.config.security.apiKey
             :Case 'query'
-                cArgs.URL[2] ⎕VSET ⊂scheme.name c.∆.config.security.apiKey
+                cArgs.URL[2] ⎕VSET ⊂(0(7162⌶)scheme.name) c.∆.config.security.apiKey ⍝ mangled, like other query names; see encodeQuery
             :Case 'cookie'
                 ⍝ Do nothing
             :Else
@@ -104,6 +104,26 @@
         0=≡⍵:,⍕⍵
         (1=≡⍵)∧0=10|⎕DR ⍵:⍵
         (≢⍺)↓∊⍺∘,¨⍕¨⍵
+      }
+
+      encodeQuery←{
+        ⍝ URL-encode a namespace of query parameters as name=value pairs joined by &
+        ⍝ A name that is not valid APL is held in its mangled form (page[size] as ⍙page⍙91⍙size⍙93⍙)
+        ⍝ and restored here. A nested value (a vector of strings, say) repeats the name for each item.
+        ns←⍵
+        pair←{(,1(7162⌶)⍺)(,⍕⍵)}
+        pairs←⊃,/{v←ns⍎⍵ ⋄ 1≥|≡v:⊂⍵ pair v ⋄ ⍵∘pair¨v}¨ns.⎕NL ¯2
+        c.∆.HttpCommand.UrlEncode⊃,/pairs
+      }
+
+      formatBody←{
+        ⍝ Prepare a JSON request body for HttpCommand
+        ⍝ A model instance (or a vector of them) is converted to a namespace with its FormatNS method,
+        ⍝ since ⎕JSON cannot serialise class instances. Anything else is returned unchanged.
+        isModel←{9.2=⎕NC⊂,'⍵'}
+        isModel ⍵:⍵.FormatNS
+        (1=≢⍴⍵)∧326=⎕DR ⍵:{isModel ⍵:⍵.FormatNS ⋄ ⍵}¨⍵
+        ⍵
       }
 
       isValidPathParam←{

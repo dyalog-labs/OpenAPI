@@ -127,7 +127,8 @@ public class ArtifactGeneratorService
 
         context.CustomProperties["class_name"] = GeneratorConstants.DefaultClientClass;
         context.CustomProperties["tags"] = context.GetAllTags()
-            .Select(tag => StringHelpers.ToValidAplName(tag.ToCamelCase()))
+            .Select(OperationNaming.TagName)
+            .Distinct()
             .ToList();
 
         var output = await _templateService.RenderAsync(template, context);
@@ -143,12 +144,18 @@ public class ArtifactGeneratorService
     /// Generates the README.md file.
     /// </summary>
     /// <exception cref="Exception">Re-thrown after logging if generation fails.</exception>
-    public async Task GenerateReadmeAsync(OpenApiDocument document, string outputDirectory)
+    public async Task GenerateReadmeAsync(
+        OpenApiDocument document, string outputDirectory, IEnumerable<string>? inlineModelNames = null)
     {
         try
         {
             var template = await _templateService.LoadTemplateAsync(GeneratorConstants.ReadmeTemplate);
-            var context  = new ApiTemplateContext { Document = document, GeneratedAt = DateTime.UtcNow };
+            var context  = new ApiTemplateContext
+            {
+                Document         = document,
+                GeneratedAt      = DateTime.UtcNow,
+                InlineModelNames = inlineModelNames ?? Enumerable.Empty<string>()
+            };
             context.CustomProperties["class_name"] = GeneratorConstants.DefaultClientClass;
 
             var output = await _templateService.RenderAsync(template, context);
@@ -165,29 +172,23 @@ public class ArtifactGeneratorService
     }
 
     /// <summary>
-    /// Generates a per-tag documentation file at docs/&lt;tag&gt;.md for each tag in the API.
+    /// Generates docs/&lt;tag&gt;.md for each tag, named by the tag's APL name (as used for
+    /// client.&lt;tag&gt;), which is always a safe file name.
     /// </summary>
     public async Task GenerateTagDocsAsync(OpenApiDocument document, string outputDirectory)
     {
         var template = await _templateService.LoadTemplateAsync(GeneratorConstants.TagDocTemplate);
         var context  = new ApiTemplateContext { Document = document, GeneratedAt = DateTime.UtcNow };
-        context.CustomProperties["class_name"] = GeneratorConstants.DefaultClientClass;
 
-        foreach (var tag in context.GetAllTags())
+        foreach (var tag in context.TagDocs)
         {
-            context.CustomProperties["current_tag"]         = tag;
-            context.CustomProperties["current_tag_display"] = ToDisplayName(tag);
+            context.CustomProperties["tag"] = tag;
 
             var output = await _templateService.RenderAsync(template, context);
-            var slug   = tag.Replace(" ", "-");
-            var path   = Path.Combine(outputDirectory, "docs", $"{slug}.md");
+            var path   = Path.Combine(outputDirectory, tag.DocPath);
 
             await _templateService.SaveOutputAsync(output, path);
-            _logger.LogInformation("Generated: docs/{Tag}.md", slug);
+            _logger.LogInformation("Generated: {DocPath}", tag.DocPath);
         }
     }
-
-    private static string ToDisplayName(string tag) =>
-        string.Join(" ", tag.Split(['-', '_'])
-            .Select(w => w.Length > 0 ? char.ToUpper(w[0]) + w[1..] : w));
 }

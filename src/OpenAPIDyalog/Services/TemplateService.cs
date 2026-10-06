@@ -156,18 +156,9 @@ public class TemplateService : ITemplateService
         }
 
         scriptObject.Import("comment_lines", new Func<string?, string>(StringHelpers.CommentLines));
-
-        // NOTE: get_operations_by_tag still requires an is ApiTemplateContext check because
-        // GetOperationsByTag() is a method on ApiTemplateContext that has no equivalent on
-        // ITemplateContext. This is a known limitation — the interface cannot express
-        // document-scoped operation grouping without coupling it to the OpenAPI domain.
-        scriptObject.Import("get_operations_by_tag",
-            new Func<Dictionary<string, List<ApiTemplateContext.OperationInfo>>>(() =>
-            {
-                if (context is ApiTemplateContext apiCtx)
-                    return apiCtx.GetOperationsByTag();
-                return new Dictionary<string, List<ApiTemplateContext.OperationInfo>>();
-            }));
+        scriptObject.Import("apl_name",      new Func<string?, string>(n => StringHelpers.ToValidAplName(n ?? string.Empty)));
+        scriptObject.Import("one_line",      new Func<string?, string>(StringHelpers.ToSingleLine));
+        scriptObject.Import("md_cell",       new Func<string?, string>(StringHelpers.ToTableCell));
 
         return scriptObject;
     }

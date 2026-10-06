@@ -10,13 +10,13 @@ response←{{ operation_id }} argsNs;headerParams;queryParams;body;clientArgs;se
 ⍝
 ⍝ Parameters:
 {{~ for param in parameters ~}}
-⍝   - {{ param.name }} (in: {{ param.in | string.downcase }}) [{{ if param.required }}required{{ else }}optional{{ end }}]{{ if param.schema.type }}: {{ param.schema.type }}{{ end }}
+⍝   - {{ apl_name param.name }} (in: {{ param.in | string.downcase }}) [{{ if param.required }}required{{ else }}optional{{ end }}]{{ if param.schema.type }}: {{ param.schema.type }}{{ end }}
 {{~ end ~}}
 {{~ end ~}}
-{{~ if request_json_body_type ~}}
+{{~ if request_content_type == "application/json" && request_body_arg_name ~}}
 ⍝
 ⍝ Request Body:
-⍝   - {{ request_content_type }}: {{ request_json_body_type }} schema{{ if request_body.required }} (required){{ end }}
+⍝   - {{ request_body_arg_name }} ({{ request_content_type }}){{ if request_json_body_type }}: {{ if request_body_is_array }}array of {{ end }}{{ request_json_body_type }}{{ end }}{{ if request_body.required }} (required){{ end }}
 {{~ end ~}}
 {{~ if request_content_type == "application/octet-stream" ~}}
 ⍝
@@ -53,51 +53,54 @@ headerParams←⍬
 queryParams←()
 body←()
 
+{{~ # Parameters are read from argsNs under their APL names (apl_name), which differ from
+    # the API name only when that is not a valid APL identifier (e.g. X-Trace → ⍙X⍙45⍙Trace). ~}}
 {{~ for param in parameters ~}}
+{{~ name = apl_name param.name ~}}
 {{~ if param.in == "Query" ~}}
 ⍝ Query parameter: {{ param.name }}
-:If (2=argsNs.⎕NC'{{ param.name }}')
+:If (2=argsNs.⎕NC'{{ name }}')
 {{~ if param.schema.type == "Array" && !param.explode ~}}
-    queryParams.{{ param.name }}←'{{ if param.style == "SpaceDelimited" }} {{ else if param.style == "PipeDelimited" }}|{{ else }},{{ end }}'c.∆.utils.joinArray argsNs.{{ param.name }} ⍝ explode: false
+    queryParams.{{ name }}←'{{ if param.style == "SpaceDelimited" }} {{ else if param.style == "PipeDelimited" }}|{{ else }},{{ end }}'c.∆.utils.joinArray argsNs.{{ name }} ⍝ explode: false
 {{~ else ~}}
-    queryParams.{{ param.name }}←argsNs.{{ param.name }}
+    queryParams.{{ name }}←argsNs.{{ name }}
 {{~ end ~}}
 :{{ if param.required }}Else
-    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ param.name }}')
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ name }}')
 :{{ end }}EndIf
 {{~ end ~}}
 {{~ if param.in == "Header" ~}}
 ⍝ Header parameter: {{ param.name }}
-:If (2=argsNs.⎕NC'{{ param.name }}')
-    headerParams,←'{{ param.name }}' argsNs.{{ param.name }}
+:If (2=argsNs.⎕NC'{{ name }}')
+    headerParams,←'{{ param.name }}' argsNs.{{ name }}
 :{{ if param.required }}Else
-    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ param.name }}')
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ name }}')
 :{{ end }}EndIf
 {{~ end ~}}
 {{~ if param.in == "Path" ~}}
 ⍝ Path parameter: {{ param.name }}
-:If 2≠argsNs.⎕NC'{{ param.name }}'
-    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ param.name }}')
+:If 2≠argsNs.⎕NC'{{ name }}'
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ name }}')
 :EndIf
-:If ~c.∆.utils.isValidPathParam argsNs.{{ param.name }}
-    ⎕SIGNAL⊂('EN' 11)('Message' 'Invalid parameter: {{ param.name }} (must be a character vector or scalar number)')
+:If ~c.∆.utils.isValidPathParam argsNs.{{ name }}
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Invalid parameter: {{ name }} (must be a character vector or scalar number)')
 :EndIf
-:If 2|⎕DR argsNs.{{ param.name }} ⍝ If numeric, convert to string
-    argsNs.{{ param.name }}←⍕argsNs.{{ param.name }}
+:If 2|⎕DR argsNs.{{ name }} ⍝ If numeric, convert to string
+    argsNs.{{ name }}←⍕argsNs.{{ name }}
 :EndIf
 {{~ end ~}}
 {{~ end ~}}
 
-{{~ if request_content_type == "application/json" && request_json_body_type ~}}
-{{~ # Convert PascalCase to camelCase for parameter name ~}}
-{{~ first_char = request_json_body_type | string.slice 0 1 | string.downcase ~}}
-{{~ rest_chars = request_json_body_type | string.slice 1 ~}}
-{{~ request_body_param_name = first_char + rest_chars ~}}
-⍝ Request body (JSON)
-:If (0≠argsNs.⎕NC'{{ request_body_param_name }}')
-    body←argsNs.{{ request_body_param_name }}
+{{~ if request_content_type == "application/json" && request_body_arg_name ~}}
+{{~ if request_json_body_type ~}}
+⍝ Request body (JSON): a namespace or a models.{{ request_json_body_type }} instance{{ if request_body_is_array }}, or a vector of them{{ end }}
+{{~ else ~}}
+⍝ Request body (JSON), sent as given
+{{~ end ~}}
+:If (0≠argsNs.⎕NC'{{ request_body_arg_name }}')
+    body←{{ if request_body_is_array }},{{ end }}c.∆.utils.formatBody argsNs.{{ request_body_arg_name }}{{ if request_body_is_array }} ⍝ a JSON array, even of one item{{ end }}
 :{{ if request_body.required }}Else
-    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ request_body_param_name }}')
+    ⎕SIGNAL⊂('EN' 11)('Message' 'Missing required parameter: {{ request_body_arg_name }}')
 :{{ end }}EndIf
 {{~ end ~}}
 {{~ if request_content_type == "application/octet-stream" ~}}
@@ -158,7 +161,7 @@ clientArgs←clientArgs c.∆.utils.Authenticate secSchemes
 queryParams←queryParams ⎕NS 2⊃clientArgs.URL
 clientArgs.URL←⊃clientArgs.URL
 :If 0≠⍴queryParams.⎕NL-⍳9
-    clientArgs.URL,←'?',c.∆.HttpCommand.UrlEncode (queryParams)
+    clientArgs.URL,←'?',c.∆.utils.encodeQuery queryParams
 :EndIf
 
 ⍝ Run and handle response

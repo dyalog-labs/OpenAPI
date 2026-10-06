@@ -146,8 +146,10 @@ public class ModelGeneratorService
             IsWriteOnly = propSchema.WriteOnly,
             Format     = propSchema.Format,
             Description = propSchema.Description,
-            IsArray    = propSchema.Type == JsonSchemaType.Array
+            IsArray    = OperationNaming.IsType(propSchema, JsonSchemaType.Array),
         };
+        prop.IsStringArray = prop.IsArray
+            && propSchema.Items != null && OperationNaming.IsType(propSchema.Items, JsonSchemaType.String);
 
         // Default value — render as string for the comment.
         if (propSchema.Default is JsonNode defaultNode)
@@ -157,14 +159,16 @@ public class ModelGeneratorService
         if (propSchema.Enum?.Count > 0)
         {
             prop.EnumValues = propSchema.Enum
-                .Select(e => ExtractEnumString(e))
+                .Select(ToEnumValue)
                 .Where(v => v != null)
-                .Select(v => new EnumValue
-                {
-                    ApiValue = v!,
-                    AplName  = StringHelpers.ToValidAplName(v!.ToPascalCase())
-                })
+                .Cast<EnumValue>()
                 .ToList();
+
+            // Values whose readable names collide (e.g. "in-stock" and "in_stock") fall back to
+            // the mangled value itself, which is unique.
+            foreach (var group in prop.EnumValues.GroupBy(v => v.AplName).Where(g => g.Count() > 1))
+                foreach (var v in group)
+                    v.AplName = StringHelpers.ToValidAplName(v.ApiValue);
         }
 
         // Reference detection — direct $ref property.
@@ -180,8 +184,7 @@ public class ModelGeneratorService
             }
         }
         // Reference detection — array whose items are a $ref.
-        else if (propSchema.Type == JsonSchemaType.Array
-                 && propSchema.Items is OpenApiSchemaReference itemsRef)
+        else if (prop.IsArray && propSchema.Items is OpenApiSchemaReference itemsRef)
         {
             var id = itemsRef.Reference.Id;
             if (!string.IsNullOrEmpty(id))
@@ -225,13 +228,40 @@ public class ModelGeneratorService
     }
 
     /// <summary>
-    /// Extracts the string representation of an enum value JsonNode.
+    /// Converts an enum value to its API text, a name for its constant, and an APL literal of the
+    /// right type: a quoted string, a number, or ⊂'true'/⊂'false' (as ⎕JSON represents booleans).
+    /// Returns null for a null enum value, which has no constant.
     /// </summary>
-    private static string? ExtractEnumString(JsonNode? node)
+    internal static EnumValue? ToEnumValue(JsonNode? node)
     {
-        if (node is null) return null;
-        if (node is JsonValue jv && jv.TryGetValue<string>(out var s)) return s;
-        // Non-string enums (integer, boolean) — render as-is.
-        return node.ToString();
+        if (node is not JsonValue jv) return null;
+
+        string apiValue;
+        string literal;
+        if (jv.TryGetValue<string>(out var s))
+        {
+            apiValue = s;
+            literal  = StringHelpers.ToAplString(s);
+        }
+        else if (jv.TryGetValue<bool>(out var b))
+        {
+            apiValue = b ? "true" : "false";
+            literal  = $"(⊂'{apiValue}')";
+        }
+        else
+        {
+            apiValue = jv.ToJsonString();
+            literal  = apiValue.Replace('-', '¯');
+        }
+
+        // Strings get a readable PascalCase name; numbers and booleans are named by their
+        // value, so 3 and -3 stay distinct.
+        var name = s != null ? apiValue.ToPascalCase() : apiValue;
+        return new EnumValue
+        {
+            ApiValue   = apiValue,
+            AplName    = StringHelpers.ToValidAplName(name.Length > 0 ? name : apiValue),
+            AplLiteral = literal
+        };
     }
 }

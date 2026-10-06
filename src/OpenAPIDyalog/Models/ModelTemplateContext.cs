@@ -92,7 +92,7 @@ public class ModelProperty
     public bool IsNullable { get; set; }
 
     /// <summary>
-    /// Whether this is a server-generated read-only field (skipped in FormatNS).
+    /// Whether this is a server-generated read-only field (cannot be set, and skipped in FormatNS).
     /// </summary>
     public bool IsReadOnly { get; set; }
 
@@ -132,6 +132,11 @@ public class ModelProperty
     public bool IsArray { get; set; }
 
     /// <summary>
+    /// Whether this property is an array of strings (so a single string must be enclosed to stay one item).
+    /// </summary>
+    public bool IsStringArray { get; set; }
+
+    /// <summary>
     /// Allowed enum values, or null if the property is not an enum.
     /// </summary>
     public List<EnumValue>? EnumValues { get; set; }
@@ -163,4 +168,9 @@ public class EnumValue
     /// The APL identifier for this value (e.g. "Admin").
     /// </summary>
     public string AplName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The value as an APL literal of the right type (e.g. 'admin', 42 or (⊂'true')).
+    /// </summary>
+    public string AplLiteral { get; set; } = string.Empty;
 }

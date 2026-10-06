@@ -42,17 +42,15 @@ public class EndpointGeneratorService
 
         foreach (var tagGroup in operationsByTag)
         {
-            var tagDirName = StringHelpers.ToValidAplName(tagGroup.Key.ToCamelCase());
+            var tagDirName = OperationNaming.TagName(tagGroup.Key);
             var tagDir     = Path.Combine(tagsDir, tagDirName);
             Directory.CreateDirectory(tagDir);
 
-            foreach (var (path, method, operation) in tagGroup.Value)
+            foreach (var (path, method, operation, pathItem) in tagGroup.Value)
             {
-                var rawId    = operation.OperationId
-                    ?? $"{method}_{path.Replace("/", "_").Replace("{", "").Replace("}", "")}";
-                var operationId = StringHelpers.ToValidAplName(rawId.Replace("/", "_").ToPascalCase());
+                var operationId = OperationNaming.FunctionName(operation.OperationId, method, path);
 
-                var context = BuildOperationContext(path, method, operation, document, operationId);
+                var context = BuildOperationContext(path, method, operation, pathItem, document, operationId);
                 ResolveRequestBody(operation, operationId, context, inlineSchemas);
 
                 var output     = await _templateService.RenderAsync(template, context);
@@ -71,10 +69,10 @@ public class EndpointGeneratorService
     /// Groups all operations from the document by their first tag.
     /// Operations without a tag fall into "default".
     /// </summary>
-    internal static Dictionary<string, List<(string path, string method, OpenApiOperation operation)>>
+    internal static Dictionary<string, List<(string path, string method, OpenApiOperation operation, IOpenApiPathItem pathItem)>>
         GroupOperationsByTag(OpenApiDocument document)
     {
-        var result = new Dictionary<string, List<(string, string, OpenApiOperation)>>();
+        var result = new Dictionary<string, List<(string, string, OpenApiOperation, IOpenApiPathItem)>>();
 
         foreach (var path in document.Paths)
         {
@@ -82,12 +80,12 @@ public class EndpointGeneratorService
 
             foreach (var operation in path.Value.Operations)
             {
-                var tag = operation.Value.Tags?.FirstOrDefault()?.Name ?? GeneratorConstants.DefaultTagName;
+                var tag = OperationNaming.TagOf(operation.Value);
 
                 if (!result.ContainsKey(tag))
-                    result[tag] = new List<(string, string, OpenApiOperation)>();
+                    result[tag] = new List<(string, string, OpenApiOperation, IOpenApiPathItem)>();
 
-                result[tag].Add((path.Key, operation.Key.ToString().ToLowerInvariant(), operation.Value));
+                result[tag].Add((path.Key, operation.Key.ToString().ToLowerInvariant(), operation.Value, path.Value));
             }
         }
 
@@ -95,7 +93,7 @@ public class EndpointGeneratorService
     }
 
     private static OperationTemplateContext BuildOperationContext(
-        string path, string method, OpenApiOperation operation,
+        string path, string method, OpenApiOperation operation, IOpenApiPathItem pathItem,
         OpenApiDocument document, string operationId)
     {
         // Operation-level security overrides document-level.
@@ -113,7 +111,7 @@ public class EndpointGeneratorService
             Summary      = operation.Summary,
             Description  = operation.Description,
             Tags         = operation.Tags?.Select(t => t.Name).Where(n => n != null).Cast<string>().ToList() ?? new(),
-            Parameters   = operation.Parameters?.ToList() ?? new(),
+            Parameters   = OperationNaming.MergeParameters(pathItem, operation),
             RequestBody  = operation.RequestBody,
             Responses    = operation.Responses?.ToDictionary(r => r.Key, r => r.Value) ?? new(),
             Deprecated   = operation.Deprecated,
@@ -141,6 +139,8 @@ public class EndpointGeneratorService
                     context.RequestContentType = contentType;
                     if (schema != null)
                         ResolveJsonBodyType(schema, operationId, context, inlineSchemas);
+                    else
+                        context.RequestBodyArgName = OperationNaming.UntypedJsonBodyArgName;
                     break;
 
                 case GeneratorConstants.ContentTypeOctetStream:
@@ -169,31 +169,27 @@ public class EndpointGeneratorService
         OperationTemplateContext context,
         Dictionary<string, IOpenApiSchema> inlineSchemas)
     {
-        if (schema is OpenApiSchemaReference reference)
+        var body = OperationNaming.DescribeJsonBody(schema, operationId);
+        if (body == null)
         {
-            var id = reference.Reference.Id;
-            if (!string.IsNullOrEmpty(id))
-                context.RequestJsonBodyType = StringHelpers.ToValidAplName(id.ToCamelCase());
+            context.RequestBodyArgName = OperationNaming.UntypedJsonBodyArgName;
+            return;
         }
-        else if (schema.Type == JsonSchemaType.Array && schema.Items is OpenApiSchemaReference itemsRef)
+
+        context.RequestBodyArgName  = body.ArgName;
+        context.RequestBodyIsArray  = body.IsArray;
+        context.RequestJsonBodyType = body.ModelName;
+
+        // Inline object schemas get a synthesised model class. Two operations with the same
+        // function name would collide, so number any repeats.
+        if (body.InlineSchema != null)
         {
-            var id = itemsRef.Reference.Id;
-            if (!string.IsNullOrEmpty(id))
-                context.RequestJsonBodyType = StringHelpers.ToValidAplName(id.ToCamelCase());
-        }
-        else if (schema.Type == JsonSchemaType.Object && schema.Properties != null)
-        {
-            var modelName = GenerateSyntheticModelName(operationId, "Request", inlineSchemas);
-            inlineSchemas[modelName] = schema;
-            context.RequestJsonBodyType = StringHelpers.ToValidAplName(modelName.ToPascalCase());
-        }
-        else if (schema.Type == JsonSchemaType.Array &&
-                 schema.Items?.Type == JsonSchemaType.Object &&
-                 schema.Items.Properties != null)
-        {
-            var modelName = GenerateSyntheticModelName(operationId, "RequestItem", inlineSchemas);
-            inlineSchemas[modelName] = schema.Items;
-            context.RequestJsonBodyType = StringHelpers.ToValidAplName(modelName.ToPascalCase());
+            var modelName = body.ModelName!;
+            var counter   = 2;
+            while (inlineSchemas.ContainsKey(modelName))
+                modelName = $"{body.ModelName}{counter++}";
+            inlineSchemas[modelName] = body.InlineSchema;
+            context.RequestJsonBodyType = modelName;
         }
     }
 
@@ -230,21 +226,5 @@ public class EndpointGeneratorService
         }
 
         return fields;
-    }
-
-    private static string GenerateSyntheticModelName(
-        string operationId, string suffix, Dictionary<string, IOpenApiSchema> inlineSchemas)
-    {
-        var baseName  = $"{operationId.ToPascalCase()}{suffix}";
-        var modelName = baseName;
-        var counter   = 2;
-
-        while (inlineSchemas.ContainsKey(modelName))
-        {
-            modelName = $"{baseName}{counter}";
-            counter++;
-        }
-
-        return modelName;
     }
 }
