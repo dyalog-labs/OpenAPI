@@ -295,7 +295,8 @@ public sealed class DocsBuilder
         if (!required) parts.Add("optional");
 
         var enumValues = schema?.Enum?
-            .Select(e => e is JsonValue jv && jv.TryGetValue<string>(out var s) ? s : e?.ToJsonString())
+            .Select(e => SchemaHelpers.IsJsonNull(e) ? "null"
+                : e is JsonValue jv && jv.TryGetValue<string>(out var s) ? s : e?.ToJsonString())
             .Where(v => v != null)
             .ToList();
         if (enumValues is { Count: > 0 })
@@ -318,7 +319,8 @@ public sealed class DocsBuilder
         schema = Resolve(schema);
         if (schema == null) return "'value'";
 
-        var sample = (schema.Default as JsonValue) ?? schema.Enum?.OfType<JsonValue>().FirstOrDefault();
+        var sample = (SchemaHelpers.IsJsonNull(schema.Default) ? null : schema.Default as JsonValue)
+            ?? schema.Enum?.Where(e => !SchemaHelpers.IsJsonNull(e)).OfType<JsonValue>().FirstOrDefault();
 
         if (OperationNaming.IsType(schema, JsonSchemaType.String))
             return sample != null && sample.TryGetValue<string>(out var s) ? StringHelpers.ToAplString(s) : "'value'";

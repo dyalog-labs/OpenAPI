@@ -52,7 +52,7 @@ The allowed values are also available as constants, in a namespace named `Enum<P
 pet.status ← models.Pet.EnumStatus.Sold    ⍝ 'sold'
 ```
 
-String values are character vectors, numeric values are numbers, and boolean values are `⊂'true'` and `⊂'false'`, as `⎕JSON` represents them.
+String values are character vectors, numeric values are numbers, and boolean values are `⊂'true'` and `⊂'false'`, as `⎕JSON` represents them. If the schema allows null, the property can also be set to `⊂'null'`.
 
 ## Sending a model
 
@@ -83,7 +83,7 @@ pet.category.name    ⍝ pet.category is a models.Category
 
 ## Map types
 
-A schema with no properties of its own, but `additionalProperties`, describes an object with arbitrary keys. Its class holds a namespace of those keys and values as given:
+A schema with no properties of its own describes an object with arbitrary keys, unless it sets `additionalProperties: false`. This includes a bare `{"type": "object"}`. Its class holds a namespace of those keys and values as given:
 
 ```apl
 labels ← ⎕NEW models.Labels (colour: 'red' ⋄ size: 'L')

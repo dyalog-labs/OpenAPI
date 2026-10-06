@@ -9,13 +9,15 @@ namespace OpenAPIDyalog.Utils;
 public static class SchemaHelpers
 {
     /// <summary>
-    /// Follows a $ref to the component schema it names; any other schema is returned as is.
+    /// Follows a $ref to the component schema it names, and on through any components that are
+    /// themselves references (A → B → Pet), stopping at a cycle. Any other schema is returned as is.
     /// </summary>
     public static IOpenApiSchema? Resolve(IOpenApiSchema? schema, OpenApiDocument? document)
     {
-        if (schema is OpenApiSchemaReference r && r.Reference.Id != null
-            && document?.Components?.Schemas?.TryGetValue(r.Reference.Id, out var resolved) == true)
-            return resolved;
+        var seen = new HashSet<string>();
+        while (schema is OpenApiSchemaReference r && r.Reference.Id is { } id && seen.Add(id)
+               && document?.Components?.Schemas?.TryGetValue(id, out var resolved) == true)
+            schema = resolved;
         return schema;
     }
 
@@ -42,16 +44,34 @@ public static class SchemaHelpers
         ReferenceId(schema) != null && Resolve(schema, document) is { } target && IsObjectModel(target);
 
     /// <summary>
+    /// Whether an enum value is JSON null. Microsoft.OpenApi reads null as a sentinel string.
+    /// </summary>
+    public static bool IsJsonNull(System.Text.Json.Nodes.JsonNode? node) =>
+        node is null || node.IsJsonNullSentinel()
+        || node.GetValueKind() == System.Text.Json.JsonValueKind.Null;
+
+    /// <summary>
     /// The model class generated for a component or inline schema name.
     /// </summary>
     public static string ClassNameOf(string schemaName) =>
         StringHelpers.ToValidAplName(schemaName.ToPascalCase());
 
     /// <summary>
-    /// The component schemas that get a model class.
+    /// Whether a (resolved) object schema has no properties of its own, so is a map of arbitrary
+    /// keys: it has additionalProperties, or does not forbid them (as a bare {"type": "object"} does not).
+    /// </summary>
+    public static bool IsMap(IOpenApiSchema schema) =>
+        schema.Properties is not { Count: > 0 }
+        && schema.AllOf is not { Count: > 0 }
+        && (schema.AdditionalProperties != null || schema.AdditionalPropertiesAllowed);
+
+    /// <summary>
+    /// The component schemas that get a model class, each resolved (a component that is a
+    /// reference to another, an alias, gets a class of its own like the one it refers to).
     /// </summary>
     public static IEnumerable<KeyValuePair<string, IOpenApiSchema>> ModelComponents(OpenApiDocument document) =>
         (document.Components?.Schemas ?? new Dictionary<string, IOpenApiSchema>())
+            .Select(kvp => KeyValuePair.Create(kvp.Key, Resolve(kvp.Value, document) ?? kvp.Value))
             .Where(kvp => IsObjectModel(kvp.Value));
 
     /// <summary>

@@ -94,13 +94,13 @@ public class ModelGeneratorService
             Description = schema.Description ?? sourceInfo
         };
 
-        // Map type: no named properties, but has additionalProperties.
-        if ((schema.Properties == null || schema.Properties.Count == 0)
-            && (schema.AllOf == null || schema.AllOf.Count == 0)
-            && schema.AdditionalProperties != null)
+        // Map type: no named properties, and any keys allowed (a free-form object).
+        if (SchemaHelpers.IsMap(schema))
         {
             context.IsMapType    = true;
-            context.MapValueType = SchemaTypeMapper.MapSchemaTypeToAplType(schema.AdditionalProperties);
+            context.MapValueType = schema.AdditionalProperties != null
+                ? SchemaTypeMapper.MapSchemaTypeToAplType(schema.AdditionalProperties)
+                : null;
             return context;
         }
 
@@ -143,7 +143,7 @@ public class ModelGeneratorService
             && propSchema.Items != null && OperationNaming.IsType(propSchema.Items, JsonSchemaType.String);
 
         // Default value — render as string for the comment.
-        if (propSchema.Default is JsonNode defaultNode)
+        if (propSchema.Default is JsonNode defaultNode && !SchemaHelpers.IsJsonNull(defaultNode))
             prop.DefaultValue = RenderDefaultValue(defaultNode);
 
         // Enum values.
@@ -154,6 +154,9 @@ public class ModelGeneratorService
                 .Where(v => v != null)
                 .Cast<EnumValue>()
                 .ToList();
+
+            // JSON null has no constant, but a nullable enum accepts it.
+            prop.EnumAllowsNull = prop.IsNullable || propSchema.Enum.Any(SchemaHelpers.IsJsonNull);
 
             // Values whose readable names collide (e.g. "in-stock" and "in_stock") fall back to
             // the mangled value itself, which is unique.
@@ -214,7 +217,7 @@ public class ModelGeneratorService
     /// </summary>
     internal static EnumValue? ToEnumValue(JsonNode? node)
     {
-        if (node is not JsonValue jv) return null;
+        if (node is not JsonValue jv || SchemaHelpers.IsJsonNull(node)) return null;
 
         string apiValue;
         string literal;

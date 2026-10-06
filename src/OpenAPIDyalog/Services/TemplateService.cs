@@ -1,6 +1,7 @@
 using System.Reflection;
 using CaseConverter;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi;
 using OpenAPIDyalog.Models;
 using OpenAPIDyalog.Services.Interfaces;
 using OpenAPIDyalog.Utils;
@@ -157,6 +158,7 @@ public class TemplateService : ITemplateService
 
         scriptObject.Import("comment_lines", new Func<string?, string>(StringHelpers.CommentLines));
         scriptObject.Import("apl_name",      new Func<string?, string>(n => StringHelpers.ToValidAplName(n ?? string.Empty)));
+        scriptObject.Import("is_array",      new Func<IOpenApiSchema?, bool>(s => s != null && OperationNaming.IsType(s, JsonSchemaType.Array)));
         scriptObject.Import("one_line",      new Func<string?, string>(StringHelpers.ToSingleLine));
         scriptObject.Import("md_cell",       new Func<string?, string>(StringHelpers.ToTableCell));
 

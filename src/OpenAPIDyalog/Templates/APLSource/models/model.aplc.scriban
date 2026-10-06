@@ -76,7 +76,10 @@
         ∇ Set args
         {{~ if prop.has_enum_values ~}}
             :If ~(⊂args.NewValue)∊Enum{{ prop.enum_field_name }}.(⍎¨⎕NL ¯2)
-                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.dyalog_name }} must be one of: {{ for v in prop.enum_values }}{{ v.api_value | string.replace "'" "''" }}{{ if !for.last }}, {{ end }}{{ end }}'))
+            {{~ if prop.enum_allows_null ~}}
+            :AndIf (⊂'null')≢args.NewValue ⍝ JSON null
+            {{~ end ~}}
+                ⎕SIGNAL ⊂('EN' 11)('Message' ('{{ prop.dyalog_name }} must be one of: {{ for v in prop.enum_values }}{{ v.api_value | string.replace "'" "''" }}{{ if !for.last }}, {{ end }}{{ end }}{{ if prop.enum_allows_null }}, null{{ end }}'))
             :EndIf
         {{~ end ~}}
             _{{ prop.dyalog_name }}←args.NewValue
@@ -95,7 +98,7 @@
         :Implements constructor
         {{~ if has_writable_required_fields ~}}
         ⍝ Validate required fields (readOnly fields are server-generated, not required from caller)
-        missing←({{ for f in writable_required_fields }}(⊂,'{{ f }}'){{ if !for.last }},{{ end }}{{ end }})~args.⎕NL ¯2
+        missing←({{ for f in writable_required_fields }}(⊂,'{{ f }}'){{ if !for.last }},{{ end }}{{ end }})~args.⎕NL ¯2 ¯9 ⍝ values and namespaces
         :If 0<≢missing
             ⎕SIGNAL ⊂('EN' 11)('Message'('Missing required fields: ',2↓∊(⊂', '),¨missing))
         :EndIf
@@ -103,7 +106,7 @@
         ⍝ Set properties through their setters
         {{~ for prop in properties ~}}
         {{~ if !prop.is_read_only ~}}
-        :If 2=args.⎕NC '{{ prop.dyalog_name }}' ⋄ {{ prop.dyalog_name }}←args.{{ prop.dyalog_name }} ⋄ :EndIf
+        :If (args.⎕NC '{{ prop.dyalog_name }}')∊2 9 ⋄ {{ prop.dyalog_name }}←args.{{ prop.dyalog_name }} ⋄ :EndIf
         {{~ end ~}}
         {{~ end ~}}
     ∇
@@ -116,7 +119,7 @@
         build←⎕NS ''
         {{~ for prop in properties ~}}
         {{~ if !prop.is_read_only ~}}
-        :If 2=⎕NC '_{{ prop.dyalog_name }}'
+        :If (⎕NC '_{{ prop.dyalog_name }}')∊2 9
             {{~ if prop.is_reference && prop.is_array ~}}
             build.{{ prop.dyalog_name }}←asNS¨vec {{ prop.dyalog_name }}
             {{~ else if prop.is_reference ~}}

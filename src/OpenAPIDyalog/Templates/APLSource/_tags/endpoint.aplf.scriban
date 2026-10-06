@@ -60,7 +60,7 @@ body←()
 {{~ if param.in == "Query" ~}}
 ⍝ Query parameter: {{ param.name }}
 :If (2=argsNs.⎕NC'{{ name }}')
-{{~ if param.schema.type == "Array" && !param.explode ~}}
+{{~ if (is_array param.schema) && !param.explode ~}}
     queryParams.{{ name }}←'{{ if param.style == "SpaceDelimited" }} {{ else if param.style == "PipeDelimited" }}|{{ else }},{{ end }}'c.∆.utils.joinArray argsNs.{{ name }} ⍝ explode: false
 {{~ else ~}}
     queryParams.{{ name }}←argsNs.{{ name }}

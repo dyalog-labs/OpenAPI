@@ -203,7 +203,7 @@ public class GeneratedDocsTests : IDisposable
     {
         var model = Read(await GenerateAsync(), "APLSource", "models", "Pet.aplc");
 
-        Assert.Contains("missing←((⊂,'name'))~args.⎕NL ¯2", model);
+        Assert.Contains("missing←((⊂,'name'))~args.⎕NL ¯2 ¯9", model);
     }
 
     [Fact]
@@ -283,7 +283,7 @@ public class GeneratedDocsTests : IDisposable
     {
         var model = Read(await GenerateAsync(InlineSpec), "APLSource", "models", "Dog.aplc");
 
-        Assert.Contains("missing←((⊂,'owner'))~args.⎕NL ¯2", model);
+        Assert.Contains("missing←((⊂,'owner'))~args.⎕NL ¯2 ¯9", model);
     }
 
     // ── Schemas that are not objects, deep inheritance and name clashes ────
@@ -358,7 +358,7 @@ public class GeneratedDocsTests : IDisposable
         var output = await GenerateAsync(SchemasSpec);
 
         Assert.Contains(":Property species", Read(output, "APLSource", "models", "Dog.aplc"));
-        Assert.Contains("missing←((⊂,'name'),(⊂,'species'))~args.⎕NL ¯2", Read(output, "APLSource", "models", "Dog.aplc"));
+        Assert.Contains("missing←((⊂,'name'),(⊂,'species'))~args.⎕NL ¯2 ¯9", Read(output, "APLSource", "models", "Dog.aplc"));
         Assert.Contains("        species: 'value'", Read(output, "docs", "pet.md"));
     }
 
@@ -378,5 +378,88 @@ public class GeneratedDocsTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => GenerateAsync(spec));
         Assert.Contains("animal, Animal", ex.Message);
+    }
+
+    // ── Free-form objects, aliases, nullable arrays and enums ──────────────
+
+    private const string NullableSpec = """
+        {
+          "openapi": "3.1.0",
+          "info": { "title": "Nullable", "version": "1.0.0" },
+          "paths": {
+            "/items": {
+              "get": {
+                "tags": ["item"], "operationId": "listItems",
+                "parameters": [{ "name": "ids", "in": "query", "explode": false,
+                  "schema": { "type": ["array", "null"], "items": { "type": "string" } } }],
+                "responses": { "200": { "description": "OK" } }
+              },
+              "post": {
+                "tags": ["item"], "operationId": "addItem",
+                "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Alias" } } } },
+                "responses": { "200": { "description": "OK" } }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Item": {
+                "type": "object",
+                "properties": {
+                  "colour": { "type": ["string", "null"], "enum": ["red", "blue", null] },
+                  "extra": { "$ref": "#/components/schemas/Extra" }
+                }
+              },
+              "Extra": { "type": "object" },
+              "Alias": { "$ref": "#/components/schemas/Middle" },
+              "Middle": { "$ref": "#/components/schemas/Item" }
+            }
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task NullableArrayQueryParam_WithExplodeFalse_IsJoined()
+    {
+        var apl = Read(await GenerateAsync(NullableSpec), "APLSource", "_tags", "item", "ListItems.aplf");
+
+        Assert.Contains("queryParams.ids←','c.∆.utils.joinArray argsNs.ids", apl);
+    }
+
+    [Fact]
+    public async Task NullableEnum_AcceptsNull()
+    {
+        var item = Read(await GenerateAsync(NullableSpec), "APLSource", "models", "Item.aplc");
+
+        Assert.Contains(":AndIf (⊂'null')≢args.NewValue", item);
+        Assert.Contains("must be one of: red, blue, null", item);
+    }
+
+    [Fact]
+    public async Task FreeFormObject_IsAMap()
+    {
+        var extra = Read(await GenerateAsync(NullableSpec), "APLSource", "models", "Extra.aplc");
+
+        Assert.Contains(":field _data", extra);
+    }
+
+    [Fact]
+    public async Task ReferenceChain_ResolvesToTheModel()
+    {
+        var output = await GenerateAsync(NullableSpec);
+
+        Assert.Contains(":Property colour", Read(output, "APLSource", "models", "Alias.aplc"));
+        Assert.Contains("a namespace or a `models.Alias` instance", Read(output, "docs", "item.md"));
+        Assert.Contains("colour: 'red'", Read(output, "docs", "item.md"));
+    }
+
+    [Fact]
+    public async Task Model_AcceptsAndSendsANestedModel()
+    {
+        var item = Read(await GenerateAsync(NullableSpec), "APLSource", "models", "Item.aplc");
+
+        // A nested model is a namespace or an instance (name class 9), not only an array (2)
+        Assert.Contains(":If (args.⎕NC 'extra')∊2 9 ⋄ extra←args.extra ⋄ :EndIf", item);
+        Assert.Contains(":If (⎕NC '_extra')∊2 9", item);
     }
 }
