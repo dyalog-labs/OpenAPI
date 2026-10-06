@@ -9,7 +9,7 @@
 ## Clone the repository
 
 ```bash
-git clone https://github.com/Dyalog/OpenAPI.git
+git clone https://github.com/dyalog-labs/OpenAPI.git
 cd OpenAPI
 ```
 

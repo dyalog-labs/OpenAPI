@@ -7,7 +7,7 @@
 
 ## Download and Setup
 
-Download the latest binary for your platform from the [GitHub Releases page](https://github.com/Dyalog/OpenAPI/releases/latest).
+Download the latest binary for your platform from the [GitHub Releases page](https://github.com/dyalog-labs/OpenAPI/releases/latest).
 
 === "Windows"
 
